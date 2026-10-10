@@ -1,463 +1,867 @@
 
 /* =========================================
-   MY LIFE OS — 90 DAY PLAN MANAGER
-   File: plan90.js
-========================================= */
+   MY LIFE OS
+   90-DAY PLAN MANAGER
+   File: Plan90.js
+   ========================================= */
 
-const Plan90Manager = (() => {
-    "use strict";
+(function (window) {
+  "use strict";
 
-    const STORAGE_KEY = "plan-90-days";
+  if (window.Plan90Manager) return;
 
-    const PHASES = [
-        {
-            id: "phase-1",
-            name: "المرحلة الأولى",
-            days: "1–30",
-            focus: "التأسيس وبناء العادات"
-        },
-        {
-            id: "phase-2",
-            name: "المرحلة الثانية",
-            days: "31–60",
-            focus: "التطوير والاستمرار"
-        },
-        {
-            id: "phase-3",
-            name: "المرحلة الثالثة",
-            days: "61–90",
-            focus: "التثبيت والتقييم"
-        }
-    ];
+  const STORAGE_KEY = "plan90";
 
-    function createId() {
-        if (
-            typeof AppUtils !== "undefined" &&
-            typeof AppUtils.createId === "function"
-        ) {
-            return AppUtils.createId();
-        }
+  const PHASES = [
+    {
+      id: "phase-1",
+      name: "التأسيس",
+      startDay: 1,
+      endDay: 30,
+      description: "تحديد الاتجاه وبناء الأساس."
+    },
+    {
+      id: "phase-2",
+      name: "التطوير",
+      startDay: 31,
+      endDay: 60,
+      description: "تطوير الأداء والاستمرار في التنفيذ."
+    },
+    {
+      id: "phase-3",
+      name: "الإنجاز",
+      startDay: 61,
+      endDay: 90,
+      description: "إكمال الأهداف وتقييم النتائج."
+    }
+  ];
 
-        return (
-            Date.now().toString(36) +
-            Math.random().toString(36).slice(2, 10)
-        );
+  let plans = [];
+  let initialized = false;
+
+  /* =========================================
+     UTILITIES
+  ========================================= */
+
+  function createId() {
+    if (
+      window.AppUtils &&
+      typeof window.AppUtils.createId === "function"
+    ) {
+      return window.AppUtils.createId();
     }
 
-    function readPlan() {
-        try {
-            const plan = AppStorage.get(STORAGE_KEY);
+    return (
+      "plan90-" +
+      Date.now().toString(36) +
+      "-" +
+      Math.random().toString(36).slice(2, 9)
+    );
+  }
 
-            if (
-                plan &&
-                typeof plan === "object" &&
-                Array.isArray(plan.goals)
-            ) {
-                return plan;
-            }
-        } catch (error) {
-            console.error("Plan90Manager: read failed.", error);
-        }
-
-        return {
-            title: "خطة تطوير الذات لمدة 90 يومًا",
-            startDate: null,
-            goals: [],
-            dailyLog: [],
-            weeklyReviews: [],
-            createdAt: null,
-            updatedAt: null
-        };
+  function today() {
+    if (
+      window.AppUtils &&
+      typeof window.AppUtils.today === "function"
+    ) {
+      return window.AppUtils.today();
     }
 
-    function savePlan(plan) {
-        plan.updatedAt = new Date().toISOString();
+    const date = new Date();
 
-        try {
-            const saved = AppStorage.set(STORAGE_KEY, plan);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+  }
 
-            return saved !== false;
-        } catch (error) {
-            console.error("Plan90Manager: save failed.", error);
-            return false;
-        }
+  function now() {
+    return new Date().toISOString();
+  }
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function isObject(value) {
+    return (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    );
+  }
+
+  function cleanText(value, limit) {
+    if (typeof value !== "string") return "";
+
+    return value.trim().slice(0, limit || 2000);
+  }
+
+  function isValidDate(value) {
+    if (
+      typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(value)
+    ) {
+      return false;
     }
 
-    function getPlan() {
-        return readPlan();
+    const date = new Date(value + "T12:00:00");
+
+    return (
+      !Number.isNaN(date.getTime()) &&
+      date.toISOString().slice(0, 10) === value
+    );
+  }
+
+  function shiftDate(dateString, days) {
+    const date = new Date(dateString + "T12:00:00");
+
+    date.setDate(date.getDate() + days);
+
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+  }
+
+  function emit(name, detail) {
+    if (
+      window.AppEvents &&
+      typeof window.AppEvents.emit === "function"
+    ) {
+      window.AppEvents.emit(name, detail);
+      return;
     }
 
-    function start(startDate = new Date().toISOString().slice(0, 10)) {
-        const plan = readPlan();
+    try {
+      window.dispatchEvent(
+        new CustomEvent("my-life-os:" + name, {
+          detail: detail
+        })
+      );
+    } catch (error) {
+      // Event delivery must not interrupt plan operations.
+    }
+  }
 
-        if (plan.startDate) {
-            return {
-                success: false,
-                message: "الخطة بدأت بالفعل. لا يمكن تغيير تاريخها بهذه العملية."
-            };
-        }
+  function ensureInitialized() {
+    if (!initialized) initialize();
+  }
 
-        if (!isValidDate(startDate)) {
-            return {
-                success: false,
-                message: "تاريخ البداية غير صحيح."
-            };
-        }
-
-        plan.startDate = startDate;
-        plan.createdAt = new Date().toISOString();
-
-        if (!savePlan(plan)) {
-            return {
-                success: false,
-                message: "تعذر حفظ بداية الخطة."
-            };
-        }
-
-        return {
-            success: true,
-            message: "تم بدء خطة التسعين يومًا.",
-            plan: plan
-        };
+  function save() {
+    if (
+      !window.AppStorage ||
+      typeof window.AppStorage.set !== "function"
+    ) {
+      throw new Error("وحدة التخزين غير متاحة.");
     }
 
-    function isValidDate(value) {
-        if (typeof value !== "string") {
-            return false;
-        }
+    window.AppStorage.set(STORAGE_KEY, plans);
+  }
 
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-            return false;
-        }
+  function findIndex(id) {
+    return plans.findIndex(plan => plan.id === id);
+  }
 
-        const date = new Date(value + "T00:00:00");
+  function findOrThrow(id) {
+    const plan = plans.find(item => item.id === id);
 
-        return (
-            !Number.isNaN(date.getTime()) &&
-            date.toISOString().slice(0, 10) === value
-        );
+    if (!plan) {
+      throw new Error("الخطة غير موجودة.");
     }
 
-    function getDayNumber(referenceDate = new Date()) {
-        const plan = readPlan();
+    return plan;
+  }
 
-        if (!plan.startDate) {
-            return 0;
-        }
+  /* =========================================
+     PLAN NORMALIZATION
+  ========================================= */
 
-        const startDate = new Date(plan.startDate + "T00:00:00");
-        const currentDate = new Date(referenceDate);
-
-        if (Number.isNaN(currentDate.getTime())) {
-            return 0;
-        }
-
-        currentDate.setHours(0, 0, 0, 0);
-
-        const difference = Math.floor(
-            (currentDate.getTime() - startDate.getTime()) /
-            86400000
-        );
-
-        if (difference < 0) {
-            return 0;
-        }
-
-        return Math.min(difference + 1, 90);
+  function normalizeMilestone(item) {
+    if (!isObject(item)) {
+      throw new Error("بيانات الإنجاز المرحلي غير صالحة.");
     }
 
-    function getCurrentPhase(referenceDate = new Date()) {
-        const day = getDayNumber(referenceDate);
+    const title = cleanText(item.title, 160);
 
-        if (day === 0) {
-            return null;
-        }
-
-        if (day <= 30) {
-            return PHASES[0];
-        }
-
-        if (day <= 60) {
-            return PHASES[1];
-        }
-
-        return PHASES[2];
+    if (!title) {
+      throw new Error("عنوان الإنجاز المرحلي مطلوب.");
     }
 
-    function addGoal(title, description = "", phaseId = "phase-1") {
-        const cleanTitle = String(title || "").trim();
+    const day = Number(item.day);
 
-        if (!cleanTitle) {
-            return {
-                success: false,
-                message: "اكتب اسم الهدف أولًا."
-            };
-        }
-
-        if (!PHASES.some(phase => phase.id === phaseId)) {
-            return {
-                success: false,
-                message: "المرحلة المحددة غير صحيحة."
-            };
-        }
-
-        const plan = readPlan();
-
-        const goal = {
-            id: createId(),
-            title: cleanTitle,
-            description: String(description || "").trim(),
-            phaseId: phaseId,
-            status: "not_started",
-            progress: 0,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-
-        plan.goals.push(goal);
-
-        if (!savePlan(plan)) {
-            return {
-                success: false,
-                message: "تعذر حفظ الهدف."
-            };
-        }
-
-        return {
-            success: true,
-            goal: goal
-        };
-    }
-
-    function updateGoal(id, changes = {}) {
-        const plan = readPlan();
-        const goal = plan.goals.find(item => item.id === id);
-
-        if (!goal) {
-            return {
-                success: false,
-                message: "الهدف غير موجود."
-            };
-        }
-
-        if (typeof changes.title === "string") {
-            if (!changes.title.trim()) {
-                return {
-                    success: false,
-                    message: "اسم الهدف لا يمكن أن يكون فارغًا."
-                };
-            }
-
-            goal.title = changes.title.trim();
-        }
-
-        if (typeof changes.description === "string") {
-            goal.description = changes.description.trim();
-        }
-
-        if (typeof changes.phaseId === "string") {
-            if (!PHASES.some(phase => phase.id === changes.phaseId)) {
-                return {
-                    success: false,
-                    message: "المرحلة المحددة غير صحيحة."
-                };
-            }
-
-            goal.phaseId = changes.phaseId;
-        }
-
-        if (typeof changes.progress === "number") {
-            if (
-                !Number.isFinite(changes.progress) ||
-                changes.progress < 0 ||
-                changes.progress > 100
-            ) {
-                return {
-                    success: false,
-                    message: "نسبة التقدم يجب أن تكون بين 0 و100."
-                };
-            }
-
-            goal.progress = Math.round(changes.progress);
-
-            if (goal.progress === 100) {
-                goal.status = "completed";
-            } else if (goal.progress > 0) {
-                goal.status = "in_progress";
-            } else {
-                goal.status = "not_started";
-            }
-        }
-
-        if (
-            typeof changes.status === "string" &&
-            ["not_started", "in_progress", "completed", "paused"].includes(
-                changes.status
-            )
-        ) {
-            goal.status = changes.status;
-        }
-
-        goal.updatedAt = new Date().toISOString();
-
-        if (!savePlan(plan)) {
-            return {
-                success: false,
-                message: "تعذر تحديث الهدف."
-            };
-        }
-
-        return {
-            success: true,
-            goal: goal
-        };
-    }
-
-    function removeGoal(id) {
-        const plan = readPlan();
-        const previousLength = plan.goals.length;
-
-        plan.goals = plan.goals.filter(goal => goal.id !== id);
-
-        if (plan.goals.length === previousLength) {
-            return {
-                success: false,
-                message: "الهدف غير موجود."
-            };
-        }
-
-        if (!savePlan(plan)) {
-            return {
-                success: false,
-                message: "تعذر حذف الهدف."
-            };
-        }
-
-        return {
-            success: true,
-            message: "تم حذف الهدف."
-        };
-    }
-
-    function addDailyLog(entry = {}) {
-        const plan = readPlan();
-        const date = entry.date ||
-            new Date().toISOString().slice(0, 10);
-
-        if (!isValidDate(date)) {
-            return {
-                success: false,
-                message: "تاريخ السجل غير صحيح."
-            };
-        }
-
-        const log = {
-            id: createId(),
-            date: date,
-            achievements: String(entry.achievements || "").trim(),
-            obstacles: String(entry.obstacles || "").trim(),
-            lessons: String(entry.lessons || "").trim(),
-            tomorrowFocus: String(entry.tomorrowFocus || "").trim(),
-            createdAt: new Date().toISOString()
-        };
-
-        plan.dailyLog.push(log);
-
-        if (!savePlan(plan)) {
-            return {
-                success: false,
-                message: "تعذر حفظ السجل اليومي."
-            };
-        }
-
-        return {
-            success: true,
-            log: log
-        };
-    }
-
-    function addWeeklyReview(review = {}) {
-        const plan = readPlan();
-
-        const score = Number(review.score);
-
-        if (
-            !Number.isFinite(score) ||
-            score < 0 ||
-            score > 10
-        ) {
-            return {
-                success: false,
-                message: "التقييم الأسبوعي يجب أن يكون من 0 إلى 10."
-            };
-        }
-
-        const item = {
-            id: createId(),
-            week: String(review.week || "").trim(),
-            score: score,
-            wins: String(review.wins || "").trim(),
-            challenges: String(review.challenges || "").trim(),
-            nextSteps: String(review.nextSteps || "").trim(),
-            createdAt: new Date().toISOString()
-        };
-
-        plan.weeklyReviews.push(item);
-
-        if (!savePlan(plan)) {
-            return {
-                success: false,
-                message: "تعذر حفظ التقييم الأسبوعي."
-            };
-        }
-
-        return {
-            success: true,
-            review: item
-        };
-    }
-
-    function getProgress() {
-        const plan = readPlan();
-        const total = plan.goals.length;
-
-        const completed = plan.goals.filter(
-            goal => goal.status === "completed"
-        ).length;
-
-        const average = total
-            ? Math.round(
-                plan.goals.reduce(
-                    (sum, goal) => sum + goal.progress,
-                    0
-                ) / total
-            )
-            : 0;
-
-        return {
-            day: getDayNumber(),
-            phase: getCurrentPhase(),
-            totalGoals: total,
-            completedGoals: completed,
-            averageProgress: average,
-            dailyEntries: plan.dailyLog.length,
-            weeklyReviews: plan.weeklyReviews.length,
-            isStarted: Boolean(plan.startDate),
-            isFinished: getDayNumber() === 90
-        };
+    if (
+      !Number.isInteger(day) ||
+      day < 1 ||
+      day > 90
+    ) {
+      throw new Error("يجب أن يقع يوم الإنجاز بين 1 و90.");
     }
 
     return {
-        PHASES,
-        getPlan,
-        start,
-        getDayNumber,
-        getCurrentPhase,
-        addGoal,
-        updateGoal,
-        removeGoal,
-        addDailyLog,
-        addWeeklyReview,
-        getProgress
+      id: item.id || createId(),
+      title: title,
+      description: cleanText(item.description, 1000),
+      day: day,
+      completed: Boolean(item.completed),
+      completedAt: item.completed
+        ? item.completedAt || now()
+        : null
     };
-})();
+  }
+
+  function normalizePlan(input, existing) {
+    if (!isObject(input)) {
+      throw new Error("بيانات الخطة غير صالحة.");
+    }
+
+    const old = existing || {};
+
+    const title = cleanText(
+      input.title !== undefined ? input.title : old.title,
+      160
+    );
+
+    if (!title) {
+      throw new Error("عنوان الخطة مطلوب.");
+    }
+
+    const startDate =
+      input.startDate !== undefined
+        ? input.startDate
+        : old.startDate || today();
+
+    if (!isValidDate(startDate)) {
+      throw new Error("تاريخ بداية الخطة غير صالح.");
+    }
+
+    const endDate = shiftDate(startDate, 89);
+
+    const status =
+      input.status !== undefined
+        ? input.status
+        : old.status || "active";
+
+    if (!["active", "paused", "completed", "cancelled"].includes(status)) {
+      throw new Error("حالة الخطة غير صالحة.");
+    }
+
+    const milestonesInput =
+      input.milestones !== undefined
+        ? input.milestones
+        : old.milestones || [];
+
+    if (!Array.isArray(milestonesInput)) {
+      throw new Error("قائمة الإنجازات المرحلية غير صالحة.");
+    }
+
+    const milestones = milestonesInput.map(normalizeMilestone);
+
+    const milestoneIds = milestones.map(item => item.id);
+
+    if (new Set(milestoneIds).size !== milestoneIds.length) {
+      throw new Error("توجد معرّفات مكررة للإنجازات المرحلية.");
+    }
+
+    const linkedGoalIds =
+      input.goalIds !== undefined
+        ? input.goalIds
+        : old.goalIds || [];
+
+    if (!Array.isArray(linkedGoalIds)) {
+      throw new Error("قائمة الأهداف المرتبطة غير صالحة.");
+    }
+
+    const goalIds = [...new Set(
+      linkedGoalIds.filter(
+        id => typeof id === "string" && id.trim()
+      )
+    )];
+
+    if (
+      window.GoalsManager &&
+      typeof window.GoalsManager.getById === "function"
+    ) {
+      goalIds.forEach(id => {
+        if (!window.GoalsManager.getById(id)) {
+          throw new Error("أحد الأهداف المرتبطة بالخطة غير موجود.");
+        }
+      });
+    }
+
+    return {
+      id: old.id || input.id || createId(),
+
+      title: title,
+
+      description: cleanText(
+        input.description !== undefined
+          ? input.description
+          : old.description,
+        5000
+      ),
+
+      mainGoal: cleanText(
+        input.mainGoal !== undefined
+          ? input.mainGoal
+          : old.mainGoal,
+        1000
+      ),
+
+      startDate: startDate,
+      endDate: endDate,
+
+      status: status,
+
+      goalIds: goalIds,
+      milestones: milestones,
+
+      weeklyFocus: cleanText(
+        input.weeklyFocus !== undefined
+          ? input.weeklyFocus
+          : old.weeklyFocus,
+        2000
+      ),
+
+      obstacles: cleanText(
+        input.obstacles !== undefined
+          ? input.obstacles
+          : old.obstacles,
+        3000
+      ),
+
+      lessonsLearned: cleanText(
+        input.lessonsLearned !== undefined
+          ? input.lessonsLearned
+          : old.lessonsLearned,
+        3000
+      ),
+
+      notes: cleanText(
+        input.notes !== undefined
+          ? input.notes
+          : old.notes,
+        5000
+      ),
+
+      createdAt: old.createdAt || now(),
+      updatedAt: now(),
+      completedAt: status === "completed"
+        ? old.completedAt || now()
+        : null
+    };
+  }
+
+  /* =========================================
+     INITIALIZATION
+  ========================================= */
+
+  function initialize() {
+    if (initialized) return getSummary();
+
+    if (
+      !window.AppStorage ||
+      typeof window.AppStorage.get !== "function" ||
+      typeof window.AppStorage.set !== "function"
+    ) {
+      return {
+        success: false,
+        reason: "storage-unavailable"
+      };
+    }
+
+    const stored = window.AppStorage.get(STORAGE_KEY, []);
+
+    plans = Array.isArray(stored)
+      ? stored.filter(isObject)
+      : [];
+
+    initialized = true;
+
+    save();
+
+    emit("plan90:initialized", {
+      count: plans.length
+    });
+
+    return getSummary();
+  }
+
+  /* =========================================
+     CREATE PLAN
+  ========================================= */
+
+  function create(input) {
+    ensureInitialized();
+
+    const plan = normalizePlan(input);
+
+    if (plans.some(item => item.id === plan.id)) {
+      throw new Error("معرّف الخطة مستخدم بالفعل.");
+    }
+
+    plans.push(plan);
+
+    try {
+      save();
+    } catch (error) {
+      plans.pop();
+      throw error;
+    }
+
+    emit("plan90:created", clone(plan));
+
+    return clone(plan);
+  }
+
+  /* =========================================
+     READ PLANS
+  ========================================= */
+
+  function getAll(filters) {
+    ensureInitialized();
+
+    filters = isObject(filters) ? filters : {};
+
+    let result = plans.slice();
+
+    if (filters.status) {
+      result = result.filter(
+        plan => plan.status === filters.status
+      );
+    }
+
+    if (filters.search) {
+      const query = cleanText(
+        filters.search,
+        200
+      ).toLowerCase();
+
+      result = result.filter(plan =>
+        plan.title.toLowerCase().includes(query) ||
+        plan.description.toLowerCase().includes(query) ||
+        plan.mainGoal.toLowerCase().includes(query)
+      );
+    }
+
+    return clone(result);
+  }
+
+  function getById(id) {
+    ensureInitialized();
+
+    const plan = plans.find(item => item.id === id);
+
+    return plan ? clone(plan) : null;
+  }
+
+  function getActivePlan() {
+    ensureInitialized();
+
+    const active = plans
+      .filter(plan => plan.status === "active")
+      .sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt)
+      );
+
+    return active.length ? clone(active[0]) : null;
+  }
+
+  /* =========================================
+     UPDATE PLAN
+  ========================================= */
+
+  function update(id, changes) {
+    ensureInitialized();
+
+    const index = findIndex(id);
+
+    if (index === -1) {
+      throw new Error("الخطة غير موجودة.");
+    }
+
+    if (!isObject(changes)) {
+      throw new Error("التعديلات غير صالحة.");
+    }
+
+    const previous = plans[index];
+
+    const updated = normalizePlan(
+      Object.assign({}, previous, changes, {
+        id: previous.id
+      }),
+      previous
+    );
+
+    plans[index] = updated;
+
+    try {
+      save();
+    } catch (error) {
+      plans[index] = previous;
+      throw error;
+    }
+
+    emit("plan90:updated", {
+      plan: clone(updated),
+      previous: clone(previous)
+    });
+
+    return clone(updated);
+  }
+
+  /* =========================================
+     STATUS CONTROLS
+  ========================================= */
+
+  function pause(id) {
+    return update(id, {
+      status: "paused"
+    });
+  }
+
+  function resume(id) {
+    return update(id, {
+      status: "active"
+    });
+  }
+
+  function cancel(id) {
+    return update(id, {
+      status: "cancelled"
+    });
+  }
+
+  function complete(id) {
+    const plan = update(id, {
+      status: "completed"
+    });
+
+    emit("plan90:completed", clone(plan));
+
+    return plan;
+  }
+
+  /* =========================================
+     MILESTONES
+  ========================================= */
+
+  function addMilestone(planId, input) {
+    ensureInitialized();
+
+    const plan = findOrThrow(planId);
+
+    const milestone = normalizeMilestone(input);
+
+    if (plan.milestones.some(item => item.id === milestone.id)) {
+      throw new Error("معرّف الإنجاز المرحلي مستخدم بالفعل.");
+    }
+
+    return update(planId, {
+      milestones: plan.milestones.concat(milestone)
+    });
+  }
+
+  function updateMilestone(planId, milestoneId, changes) {
+    ensureInitialized();
+
+    const plan = findOrThrow(planId);
+
+    if (!isObject(changes)) {
+      throw new Error("التعديلات غير صالحة.");
+    }
+
+    const index = plan.milestones.findIndex(
+      item => item.id === milestoneId
+    );
+
+    if (index === -1) {
+      throw new Error("الإنجاز المرحلي غير موجود.");
+    }
+
+    const oldMilestone = plan.milestones[index];
+
+    const updatedMilestone = normalizeMilestone(
+      Object.assign({}, oldMilestone, changes, {
+        id: oldMilestone.id
+      })
+    );
+
+    const milestones = plan.milestones.slice();
+
+    milestones[index] = updatedMilestone;
+
+    return update(planId, {
+      milestones: milestones
+    });
+  }
+
+  function completeMilestone(planId, milestoneId) {
+    return updateMilestone(planId, milestoneId, {
+      completed: true,
+      completedAt: now()
+    });
+  }
+
+  function reopenMilestone(planId, milestoneId) {
+    return updateMilestone(planId, milestoneId, {
+      completed: false,
+      completedAt: null
+    });
+  }
+
+  function removeMilestone(planId, milestoneId) {
+    ensureInitialized();
+
+    const plan = findOrThrow(planId);
+
+    const milestones = plan.milestones.filter(
+      item => item.id !== milestoneId
+    );
+
+    if (milestones.length === plan.milestones.length) {
+      return false;
+    }
+
+    update(planId, {
+      milestones: milestones
+    });
+
+    return true;
+  }
+
+  /* =========================================
+     PHASES AND PROGRESS
+  ========================================= */
+
+  function getPhase(day) {
+    day = Number(day);
+
+    if (!Number.isFinite(day) || day < 1 || day > 90) {
+      return null;
+    }
+
+    const phase = PHASES.find(item =>
+      day >= item.startDay &&
+      day <= item.endDay
+    );
+
+    return phase ? clone(phase) : null;
+  }
+
+  function getPlanProgress(planId, referenceDate) {
+    ensureInitialized();
+
+    const plan = findOrThrow(planId);
+
+    referenceDate = referenceDate || today();
+
+    if (!isValidDate(referenceDate)) {
+      throw new Error("تاريخ حساب التقدم غير صالح.");
+    }
+
+    const start = new Date(plan.startDate + "T12:00:00");
+    const current = new Date(referenceDate + "T12:00:00");
+
+    const elapsedDays = Math.floor(
+      (current.getTime() - start.getTime()) /
+      86400000
+    ) + 1;
+
+    const dayNumber = Math.max(
+      0,
+      Math.min(90, elapsedDays)
+    );
+
+    const completedMilestones = plan.milestones.filter(
+      item => item.completed
+    ).length;
+
+    const milestoneRate = plan.milestones.length
+      ? Math.round(
+          (completedMilestones / plan.milestones.length) * 100
+        )
+      : 0;
+
+    const linkedGoals = plan.goalIds
+      .map(id =>
+        window.GoalsManager &&
+        typeof window.GoalsManager.getById === "function"
+          ? window.GoalsManager.getById(id)
+          : null
+      )
+      .filter(Boolean);
+
+    const goalProgress = linkedGoals.length
+      ? Math.round(
+          linkedGoals.reduce(
+            (sum, goal) => sum + (Number(goal.progress) || 0),
+            0
+          ) / linkedGoals.length
+        )
+      : null;
+
+    return {
+      planId: plan.id,
+      startDate: plan.startDate,
+      endDate: plan.endDate,
+      referenceDate: referenceDate,
+
+      dayNumber: dayNumber,
+      daysRemaining: Math.max(0, 90 - dayNumber),
+
+      timeProgress: Math.round((dayNumber / 90) * 100),
+
+      completedMilestones: completedMilestones,
+      totalMilestones: plan.milestones.length,
+      milestoneProgress: milestoneRate,
+
+      linkedGoalsCount: linkedGoals.length,
+      linkedGoalsProgress: goalProgress,
+
+      currentPhase: dayNumber > 0
+        ? getPhase(dayNumber)
+        : null
+    };
+  }
+
+  /* =========================================
+     DELETE PLAN
+  ========================================= */
+
+  function remove(id) {
+    ensureInitialized();
+
+    const index = findIndex(id);
+
+    if (index === -1) return false;
+
+    const previous = plans[index];
+
+    plans.splice(index, 1);
+
+    try {
+      save();
+    } catch (error) {
+      plans.splice(index, 0, previous);
+      throw error;
+    }
+
+    emit("plan90:removed", {
+      id: id
+    });
+
+    return true;
+  }
+
+  /* =========================================
+     SUMMARY
+  ========================================= */
+
+  function getSummary() {
+    ensureInitialized();
+
+    const active = plans.filter(
+      plan => plan.status === "active"
+    );
+
+    const completed = plans.filter(
+      plan => plan.status === "completed"
+    );
+
+    const totalMilestones = plans.reduce(
+      (sum, plan) => sum + plan.milestones.length,
+      0
+    );
+
+    const completedMilestones = plans.reduce(
+      (sum, plan) =>
+        sum + plan.milestones.filter(item => item.completed).length,
+      0
+    );
+
+    return {
+      totalPlans: plans.length,
+      activePlans: active.length,
+      pausedPlans: plans.filter(
+        plan => plan.status === "paused"
+      ).length,
+      completedPlans: completed.length,
+      cancelledPlans: plans.filter(
+        plan => plan.status === "cancelled"
+      ).length,
+
+      totalMilestones: totalMilestones,
+      completedMilestones: completedMilestones,
+
+      milestoneProgress: totalMilestones
+        ? Math.round(
+            (completedMilestones / totalMilestones) * 100
+          )
+        : 0
+    };
+  }
+
+  /* =========================================
+     RESET
+  ========================================= */
+
+  function reset() {
+    ensureInitialized();
+
+    const previous = plans.slice();
+
+    plans = [];
+
+    try {
+      save();
+    } catch (error) {
+      plans = previous;
+      throw error;
+    }
+
+    emit("plan90:reset", {});
+
+    return getSummary();
+  }
+
+  /* =========================================
+     PUBLIC API
+  ========================================= */
+
+  window.Plan90Manager = Object.freeze({
+    initialize: initialize,
+
+    getAll: getAll,
+    getById: getById,
+    getActivePlan: getActivePlan,
+
+    create: create,
+    update: update,
+    remove: remove,
+
+    pause: pause,
+    resume: resume,
+    cancel: cancel,
+    complete: complete,
+
+    addMilestone: addMilestone,
+    updateMilestone: updateMilestone,
+    completeMilestone: completeMilestone,
+    reopenMilestone: reopenMilestone,
+    removeMilestone: removeMilestone,
+
+    getPhase: getPhase,
+    getPlanProgress: getPlanProgress,
+    getSummary: getSummary,
+
+    getPhases: function () {
+      return clone(PHASES);
+    },
+
+    reset: reset
+  });
+
+})(window);
