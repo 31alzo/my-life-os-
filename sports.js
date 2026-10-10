@@ -1,464 +1,614 @@
+/* =========================================================
+   MY LIFE OS — SPORT MANAGER
+   File: Sport.js
+   Purpose: Exercise planning and activity tracking
+========================================================= */
 
-/* =========================================
-   MY LIFE OS — SPORTS MODULE
-   File: sports.js
-========================================= */
+(function (window) {
+  "use strict";
 
-const SportsManager = (() => {
-    "use strict";
+  const STORAGE_KEY = "sport-sessions";
+  const EVENTS = {
+    changed: "sport:changed",
+    created: "sport:created",
+    updated: "sport:updated",
+    completed: "sport:completed",
+    deleted: "sport:deleted"
+  };
 
-    const STORAGE_KEY = "sports-data";
+  const TYPES = [
+    "strength",
+    "cardio",
+    "walking",
+    "running",
+    "cycling",
+    "stretching",
+    "mobility",
+    "sport",
+    "other"
+  ];
 
-    const ACTIVITY_TYPES = [
-        "تمارين القوة",
-        "الجري",
-        "المشي",
-        "ركوب الدراجة",
-        "تمارين المرونة",
-        "تمارين التحمل",
-        "رياضة أخرى"
-    ];
+  const STATUSES = [
+    "planned",
+    "completed",
+    "skipped",
+    "cancelled"
+  ];
 
-    function createId() {
-        if (
-            typeof AppUtils !== "undefined" &&
-            typeof AppUtils.createId === "function"
-        ) {
-            return AppUtils.createId();
-        }
-
-        return (
-            "sport-" +
-            Date.now().toString(36) +
-            "-" +
-            Math.random().toString(36).slice(2, 9)
-        );
+  function createId() {
+    if (
+      window.AppUtils &&
+      typeof window.AppUtils.createId === "function"
+    ) {
+      return window.AppUtils.createId();
     }
 
-    function getData() {
-        if (
-            typeof AppStorage === "undefined" ||
-            typeof AppStorage.get !== "function"
-        ) {
-            throw new Error(
-                "يجب تحميل storage.js قبل sports.js"
-            );
-        }
+    return "sport-" + Date.now().toString(36) +
+      "-" + Math.random().toString(36).slice(2, 10);
+  }
 
-        const data = AppStorage.get(STORAGE_KEY, {});
+  function now() {
+    return new Date().toISOString();
+  }
 
-        return {
-            goals: Array.isArray(data.goals) ? data.goals : [],
-            sessions: Array.isArray(data.sessions)
-                ? data.sessions
-                : [],
-            updatedAt: data.updatedAt || null
-        };
+  function today() {
+    if (
+      window.AppUtils &&
+      typeof window.AppUtils.today === "function"
+    ) {
+      return window.AppUtils.today();
     }
 
-    function saveData(data) {
-        if (
-            typeof AppStorage === "undefined" ||
-            typeof AppStorage.set !== "function"
-        ) {
-            throw new Error(
-                "يجب تحميل storage.js قبل sports.js"
-            );
-        }
+    const date = new Date();
 
-        data.updatedAt = new Date().toISOString();
-        AppStorage.set(STORAGE_KEY, data);
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+  }
 
-        return data;
+  function cleanString(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function isObject(value) {
+    return value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value);
+  }
+
+  function clone(value) {
+    if (
+      window.AppUtils &&
+      typeof window.AppUtils.clone === "function"
+    ) {
+      return window.AppUtils.clone(value);
     }
 
-    function validateText(value, fieldName) {
-        if (
-            typeof value !== "string" ||
-            !value.trim()
-        ) {
-            throw new Error(
-                fieldName + " مطلوب."
-            );
-        }
+    return JSON.parse(JSON.stringify(value));
+  }
 
-        return value.trim();
+  function emit(name, detail) {
+    if (
+      window.AppEvents &&
+      typeof window.AppEvents.emit === "function"
+    ) {
+      window.AppEvents.emit(name, detail);
+      return;
     }
 
-    function validateMinutes(value) {
-        const minutes = Number(value);
+    window.dispatchEvent(
+      new CustomEvent(name, { detail: detail })
+    );
+  }
 
-        if (
-            !Number.isFinite(minutes) ||
-            minutes <= 0 ||
-            minutes > 1440
-        ) {
-            throw new Error(
-                "مدة التمرين يجب أن تكون بين دقيقة و1440 دقيقة."
-            );
-        }
+  function readStorage() {
+    try {
+      if (
+        window.AppStorage &&
+        typeof window.AppStorage.get === "function"
+      ) {
+        const value = window.AppStorage.get(STORAGE_KEY);
+        return Array.isArray(value) ? value : [];
+      }
 
-        return minutes;
+      const raw = window.localStorage.getItem(
+        "my-life-os:v1:" + STORAGE_KEY
+      );
+
+      return raw === null ? [] : JSON.parse(raw);
+    } catch (error) {
+      console.error("[SportManager] Read failed:", error);
+      return [];
     }
+  }
 
-    function validateDate(value) {
-        const date = value
-            ? new Date(value)
-            : new Date();
-
-        if (Number.isNaN(date.getTime())) {
-            throw new Error("تاريخ غير صالح.");
+  function writeStorage(items) {
+    try {
+      if (
+        window.AppStorage &&
+        typeof window.AppStorage.set === "function"
+      ) {
+        if (window.AppStorage.set(STORAGE_KEY, items) === false) {
+          throw new Error("تعذر حفظ البيانات.");
         }
 
-        return date.toISOString();
-    }
-
-    function addGoal(input = {}) {
-        const data = getData();
-
-        const goal = {
-            id: createId(),
-            title: validateText(
-                input.title,
-                "اسم الهدف"
-            ),
-            targetSessions: Math.max(
-                1,
-                Math.floor(Number(input.targetSessions) || 3)
-            ),
-            targetMinutes: Math.max(
-                0,
-                Math.floor(Number(input.targetMinutes) || 0)
-            ),
-            activityType: input.activityType || "رياضة أخرى",
-            deadline: input.deadline || null,
-            notes: String(input.notes || "").trim(),
-            active: true,
-            createdAt: new Date().toISOString()
-        };
-
-        data.goals.push(goal);
-        saveData(data);
-
-        return { ...goal };
-    }
-
-    function getGoals(options = {}) {
-        const data = getData();
-
-        let goals = data.goals;
-
-        if (options.activeOnly) {
-            goals = goals.filter(goal => goal.active);
-        }
-
-        return goals.map(goal => ({ ...goal }));
-    }
-
-    function updateGoal(id, changes = {}) {
-        const data = getData();
-        const index = data.goals.findIndex(
-            goal => goal.id === id
-        );
-
-        if (index === -1) {
-            throw new Error("الهدف الرياضي غير موجود.");
-        }
-
-        const goal = data.goals[index];
-
-        if (changes.title !== undefined) {
-            goal.title = validateText(
-                changes.title,
-                "اسم الهدف"
-            );
-        }
-
-        if (changes.targetSessions !== undefined) {
-            const count = Number(changes.targetSessions);
-
-            if (!Number.isFinite(count) || count < 1) {
-                throw new Error("عدد الجلسات يجب أن يكون 1 على الأقل.");
-            }
-
-            goal.targetSessions = Math.floor(count);
-        }
-
-        if (changes.targetMinutes !== undefined) {
-            const minutes = Number(changes.targetMinutes);
-
-            if (!Number.isFinite(minutes) || minutes < 0) {
-                throw new Error("مدة الهدف غير صالحة.");
-            }
-
-            goal.targetMinutes = Math.floor(minutes);
-        }
-
-        if (changes.activityType !== undefined) {
-            goal.activityType = validateText(
-                changes.activityType,
-                "نوع الرياضة"
-            );
-        }
-
-        if (changes.deadline !== undefined) {
-            goal.deadline = changes.deadline || null;
-        }
-
-        if (changes.notes !== undefined) {
-            goal.notes = String(changes.notes).trim();
-        }
-
-        if (changes.active !== undefined) {
-            goal.active = Boolean(changes.active);
-        }
-
-        saveData(data);
-
-        return { ...goal };
-    }
-
-    function deleteGoal(id) {
-        const data = getData();
-        const previousLength = data.goals.length;
-
-        data.goals = data.goals.filter(
-            goal => goal.id !== id
-        );
-
-        if (data.goals.length === previousLength) {
-            return false;
-        }
-
-        saveData(data);
         return true;
+      }
+
+      window.localStorage.setItem(
+        "my-life-os:v1:" + STORAGE_KEY,
+        JSON.stringify(items)
+      );
+
+      return true;
+    } catch (error) {
+      console.error("[SportManager] Save failed:", error);
+      throw new Error("تعذر حفظ جلسات النشاط البدني.");
+    }
+  }
+
+  function validateDate(value) {
+    if (typeof value !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error("استخدم صيغة التاريخ YYYY-MM-DD.");
     }
 
-    function addSession(input = {}) {
-        const data = getData();
+    const date = new Date(value + "T00:00:00");
 
-        const session = {
-            id: createId(),
-            activityType: validateText(
-                input.activityType || "رياضة أخرى",
-                "نوع الرياضة"
-            ),
-            activityName: validateText(
-                input.activityName || input.activityType || "رياضة أخرى",
-                "اسم النشاط"
-            ),
-            minutes: validateMinutes(input.minutes),
-            date: validateDate(input.date),
-            intensity: [
-                "خفيف",
-                "متوسط",
-                "مرتفع"
-            ].includes(input.intensity)
-                ? input.intensity
-                : "متوسط",
-            notes: String(input.notes || "").trim(),
-            completed: input.completed !== false,
-            createdAt: new Date().toISOString()
-        };
-
-        data.sessions.push(session);
-        saveData(data);
-
-        return { ...session };
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value
+    ) {
+      throw new Error("التاريخ غير صالح.");
     }
 
-    function getSessions(options = {}) {
-        const data = getData();
+    return value;
+  }
 
-        let sessions = data.sessions;
-
-        if (options.from) {
-            const from = new Date(options.from);
-
-            if (!Number.isNaN(from.getTime())) {
-                sessions = sessions.filter(
-                    session => new Date(session.date) >= from
-                );
-            }
-        }
-
-        if (options.to) {
-            const to = new Date(options.to);
-
-            if (!Number.isNaN(to.getTime())) {
-                sessions = sessions.filter(
-                    session => new Date(session.date) <= to
-                );
-            }
-        }
-
-        if (options.activityType) {
-            sessions = sessions.filter(
-                session =>
-                    session.activityType === options.activityType
-            );
-        }
-
-        return sessions
-            .slice()
-            .sort(
-                (a, b) =>
-                    new Date(b.date) - new Date(a.date)
-            )
-            .map(session => ({ ...session }));
+  function optionalNumber(value, min, max, label) {
+    if (value === null || value === undefined || value === "") {
+      return null;
     }
 
-    function deleteSession(id) {
-        const data = getData();
-        const previousLength = data.sessions.length;
+    const number = Number(value);
 
-        data.sessions = data.sessions.filter(
-            session => session.id !== id
-        );
-
-        if (data.sessions.length === previousLength) {
-            return false;
-        }
-
-        saveData(data);
-        return true;
+    if (
+      !Number.isFinite(number) ||
+      number < min ||
+      number > max
+    ) {
+      throw new Error(
+        label + " يجب أن يكون بين " + min + " و" + max + "."
+      );
     }
 
-    function getStats(options = {}) {
-        const sessions = getSessions(options);
-        const completed = sessions.filter(
-            session => session.completed
-        );
+    return number;
+  }
 
-        const totalMinutes = completed.reduce(
-            (sum, session) => sum + session.minutes,
-            0
-        );
+  function normalizeSession(session) {
+    return {
+      id: cleanString(session.id) || createId(),
+      title: cleanString(session.title),
+      type: TYPES.includes(session.type) ? session.type : "other",
+      date: session.date || today(),
+      startTime: cleanString(session.startTime),
+      durationMinutes: session.durationMinutes ?? null,
+      status: STATUSES.includes(session.status)
+        ? session.status
+        : "planned",
+      intensity: session.intensity ?? null,
+      exercises: Array.isArray(session.exercises)
+        ? session.exercises
+        : [],
+      goalId: session.goalId || null,
+      notes: typeof session.notes === "string"
+        ? session.notes
+        : "",
+      completedAt: session.completedAt || null,
+      createdAt: session.createdAt || now(),
+      updatedAt: session.updatedAt || now()
+    };
+  }
 
-        const byActivity = {};
+  function getAll(options) {
+    const settings = options || {};
+    let sessions = readStorage().filter(isObject).map(normalizeSession);
 
-        completed.forEach(session => {
-            const key = session.activityType;
+    if (settings.date) {
+      sessions = sessions.filter(
+        session => session.date === settings.date
+      );
+    }
 
-            if (!byActivity[key]) {
-                byActivity[key] = {
-                    sessions: 0,
-                    minutes: 0
-                };
-            }
+    if (settings.from) {
+      sessions = sessions.filter(
+        session => session.date >= settings.from
+      );
+    }
 
-            byActivity[key].sessions += 1;
-            byActivity[key].minutes += session.minutes;
-        });
+    if (settings.to) {
+      sessions = sessions.filter(
+        session => session.date <= settings.to
+      );
+    }
 
+    if (settings.type) {
+      sessions = sessions.filter(
+        session => session.type === settings.type
+      );
+    }
+
+    if (settings.status) {
+      sessions = sessions.filter(
+        session => session.status === settings.status
+      );
+    }
+
+    if (settings.goalId) {
+      sessions = sessions.filter(
+        session => session.goalId === settings.goalId
+      );
+    }
+
+    if (settings.search) {
+      const query = cleanString(settings.search).toLowerCase();
+
+      sessions = sessions.filter(session =>
+        (
+          session.title + " " + session.notes
+        ).toLowerCase().includes(query)
+      );
+    }
+
+    sessions.sort((a, b) => {
+      const dateComparison = a.date.localeCompare(b.date);
+
+      if (dateComparison !== 0) {
+        return settings.ascending
+          ? dateComparison
+          : -dateComparison;
+      }
+
+      return a.startTime.localeCompare(b.startTime);
+    });
+
+    return clone(sessions);
+  }
+
+  function getById(id) {
+    const session = readStorage().find(item => item.id === id);
+    return session ? clone(normalizeSession(session)) : null;
+  }
+
+  function validateGoal(goalId) {
+    if (!goalId) {
+      return null;
+    }
+
+    if (
+      window.GoalsManager &&
+      typeof window.GoalsManager.getById === "function" &&
+      !window.GoalsManager.getById(goalId)
+    ) {
+      throw new Error("الهدف المرتبط غير موجود.");
+    }
+
+    return goalId;
+  }
+
+  function normalizeExercises(exercises) {
+    if (exercises === undefined) {
+      return [];
+    }
+
+    if (!Array.isArray(exercises)) {
+      throw new Error("قائمة التمارين يجب أن تكون مصفوفة.");
+    }
+
+    return exercises.map(exercise => {
+      if (typeof exercise === "string") {
         return {
-            totalSessions: completed.length,
-            totalMinutes,
-            totalHours: Math.round(
-                (totalMinutes / 60) * 100
-            ) / 100,
-            averageMinutes: completed.length
-                ? Math.round(totalMinutes / completed.length)
-                : 0,
-            byActivity
+          id: createId(),
+          name: cleanString(exercise),
+          sets: null,
+          reps: null,
+          notes: ""
         };
+      }
+
+      if (!isObject(exercise)) {
+        throw new Error("بيانات أحد التمارين غير صالحة.");
+      }
+
+      return {
+        id: cleanString(exercise.id) || createId(),
+        name: cleanString(exercise.name),
+        sets: optionalNumber(exercise.sets, 1, 100, "عدد المجموعات"),
+        reps: optionalNumber(exercise.reps, 1, 10000, "عدد التكرارات"),
+        notes: cleanString(exercise.notes)
+      };
+    }).filter(exercise => exercise.name);
+  }
+
+  function create(input) {
+    if (!isObject(input)) {
+      throw new Error("بيانات الجلسة غير صحيحة.");
     }
 
-    function getWeeklyStats(date = new Date()) {
-        const end = new Date(date);
+    const title = cleanString(input.title);
 
-        if (Number.isNaN(end.getTime())) {
-            throw new Error("تاريخ الأسبوع غير صالح.");
-        }
-
-        end.setHours(23, 59, 59, 999);
-
-        const start = new Date(end);
-        const day = (start.getDay() + 6) % 7;
-
-        start.setDate(start.getDate() - day);
-        start.setHours(0, 0, 0, 0);
-
-        const stats = getStats({
-            from: start.toISOString(),
-            to: end.toISOString()
-        });
-
-        return {
-            ...stats,
-            weekStart: start.toISOString(),
-            weekEnd: end.toISOString()
-        };
+    if (!title) {
+      throw new Error("أدخل اسم النشاط.");
     }
 
-    function getGoalProgress(id) {
-        const goal = getGoals().find(
-            item => item.id === id
-        );
-
-        if (!goal) {
-            throw new Error("الهدف الرياضي غير موجود.");
-        }
-
-        const sessions = getSessions().filter(
-            session =>
-                session.completed &&
-                session.activityType === goal.activityType &&
-                new Date(session.createdAt) >=
-                    new Date(goal.createdAt)
-        );
-
-        const sessionCount = sessions.length;
-
-        const minutes = sessions.reduce(
-            (sum, session) => sum + session.minutes,
-            0
-        );
-
-        const countProgress = Math.min(
-            100,
-            Math.round(
-                (sessionCount / goal.targetSessions) * 100
-            )
-        );
-
-        const timeProgress = goal.targetMinutes > 0
-            ? Math.min(
-                100,
-                Math.round(
-                    (minutes / goal.targetMinutes) * 100
-                )
-            )
-            : null;
-
-        return {
-            goalId: id,
-            completedSessions: sessionCount,
-            targetSessions: goal.targetSessions,
-            completedMinutes: minutes,
-            targetMinutes: goal.targetMinutes,
-            sessionsProgress: countProgress,
-            minutesProgress: timeProgress
-        };
+    if (!TYPES.includes(input.type || "other")) {
+      throw new Error("نوع النشاط غير صالح.");
     }
 
-    function getActivityTypes() {
-        return [...ACTIVITY_TYPES];
+    const session = {
+      id: createId(),
+      title: title,
+      type: input.type || "other",
+      date: validateDate(input.date || today()),
+      startTime: cleanString(input.startTime),
+      durationMinutes: optionalNumber(
+        input.durationMinutes, 1, 1440, "مدة النشاط بالدقائق"
+      ),
+      status: STATUSES.includes(input.status)
+        ? input.status
+        : "planned",
+      intensity: optionalNumber(
+        input.intensity, 1, 10, "شدة النشاط"
+      ),
+      exercises: normalizeExercises(input.exercises),
+      goalId: validateGoal(input.goalId),
+      notes: typeof input.notes === "string" ? input.notes : "",
+      completedAt: null,
+      createdAt: now(),
+      updatedAt: now()
+    };
+
+    if (session.status === "completed") {
+      session.completedAt = now();
+    }
+
+    const sessions = readStorage();
+    sessions.push(session);
+    writeStorage(sessions);
+
+    emit(EVENTS.created, clone(session));
+    emit(EVENTS.changed, { action: "created", id: session.id });
+
+    return clone(session);
+  }
+
+  function update(id, changes) {
+    if (!isObject(changes)) {
+      throw new Error("التعديلات غير صحيحة.");
+    }
+
+    const sessions = readStorage();
+    const index = sessions.findIndex(item => item.id === id);
+
+    if (index === -1) {
+      throw new Error("جلسة النشاط غير موجودة.");
+    }
+
+    const updated = Object.assign({}, sessions[index]);
+
+    if (Object.prototype.hasOwnProperty.call(changes, "title")) {
+      const title = cleanString(changes.title);
+
+      if (!title) {
+        throw new Error("اسم النشاط لا يمكن أن يكون فارغاً.");
+      }
+
+      updated.title = title;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "type")) {
+      if (!TYPES.includes(changes.type)) {
+        throw new Error("نوع النشاط غير صالح.");
+      }
+
+      updated.type = changes.type;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "date")) {
+      updated.date = validateDate(changes.date);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "startTime")) {
+      updated.startTime = cleanString(changes.startTime);
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(changes, "durationMinutes")
+    ) {
+      updated.durationMinutes = optionalNumber(
+        changes.durationMinutes, 1, 1440, "مدة النشاط بالدقائق"
+      );
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "intensity")) {
+      updated.intensity = optionalNumber(
+        changes.intensity, 1, 10, "شدة النشاط"
+      );
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "exercises")) {
+      updated.exercises = normalizeExercises(changes.exercises);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "goalId")) {
+      updated.goalId = validateGoal(changes.goalId);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "notes")) {
+      if (typeof changes.notes !== "string") {
+        throw new Error("الملاحظات يجب أن تكون نصاً.");
+      }
+
+      updated.notes = changes.notes;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(changes, "status")) {
+      if (!STATUSES.includes(changes.status)) {
+        throw new Error("حالة النشاط غير صالحة.");
+      }
+
+      updated.status = changes.status;
+
+      if (changes.status === "completed") {
+        updated.completedAt = updated.completedAt || now();
+      } else {
+        updated.completedAt = null;
+      }
+    }
+
+    updated.updatedAt = now();
+    sessions[index] = updated;
+    writeStorage(sessions);
+
+    emit(EVENTS.updated, clone(updated));
+    emit(EVENTS.changed, { action: "updated", id: id });
+
+    return clone(updated);
+  }
+
+  function complete(id) {
+    const session = getById(id);
+
+    if (!session) {
+      throw new Error("جلسة النشاط غير موجودة.");
+    }
+
+    if (session.status === "completed") {
+      return session;
+    }
+
+    const updated = update(id, { status: "completed" });
+
+    emit(EVENTS.completed, clone(updated));
+
+    return updated;
+  }
+
+  function remove(id) {
+    const sessions = readStorage();
+    const index = sessions.findIndex(item => item.id === id);
+
+    if (index === -1) {
+      return false;
+    }
+
+    sessions.splice(index, 1);
+    writeStorage(sessions);
+
+    emit(EVENTS.deleted, { id: id });
+    emit(EVENTS.changed, { action: "deleted", id: id });
+
+    return true;
+  }
+
+  function getToday() {
+    return getAll({ date: today() });
+  }
+
+  function getUpcoming(days) {
+    const count = Number.isInteger(days) && days >= 0 ? days : 7;
+    const start = today();
+    const endDate = new Date(start + "T00:00:00");
+
+    endDate.setDate(endDate.getDate() + count);
+
+    const end = [
+      endDate.getFullYear(),
+      String(endDate.getMonth() + 1).padStart(2, "0"),
+      String(endDate.getDate()).padStart(2, "0")
+    ].join("-");
+
+    return getAll({ from: start, to: end }).filter(
+      session => session.status === "planned"
+    );
+  }
+
+  function getSummary(options) {
+    const sessions = getAll(options);
+    const summary = {
+      total: sessions.length,
+      planned: 0,
+      completed: 0,
+      skipped: 0,
+      cancelled: 0,
+      totalCompletedMinutes: 0,
+      byType: {}
+    };
+
+    TYPES.forEach(type => {
+      summary.byType[type] = 0;
+    });
+
+    sessions.forEach(session => {
+      summary[session.status] += 1;
+      summary.byType[session.type] += 1;
+
+      if (
+        session.status === "completed" &&
+        Number.isFinite(session.durationMinutes)
+      ) {
+        summary.totalCompletedMinutes += session.durationMinutes;
+      }
+    });
+
+    summary.todayCount = getToday().length;
+    summary.todayCompleted = getToday().filter(
+      session => session.status === "completed"
+    ).length;
+
+    return summary;
+  }
+
+  function initialize() {
+    const sessions = readStorage();
+
+    if (!Array.isArray(sessions)) {
+      writeStorage([]);
     }
 
     return {
-        addGoal,
-        getGoals,
-        updateGoal,
-        deleteGoal,
-        addSession,
-        getSessions,
-        deleteSession,
-        getStats,
-        getWeeklyStats,
-        getGoalProgress,
-        getActivityTypes
+      initialized: true,
+      count: getAll().length
     };
-})();
+  }
 
-/* End of sports.js */
+  function reset() {
+    writeStorage([]);
+    emit(EVENTS.changed, { action: "reset" });
+    return true;
+  }
+
+  window.SportManager = Object.freeze({
+    initialize: initialize,
+    create: create,
+    getAll: getAll,
+    getById: getById,
+    update: update,
+    complete: complete,
+    remove: remove,
+    getToday: getToday,
+    getUpcoming: getUpcoming,
+    getSummary: getSummary,
+    getTypes: function () {
+      return TYPES.slice();
+    },
+    getStatuses: function () {
+      return STATUSES.slice();
+    },
+    reset: reset,
+    EVENTS: Object.freeze(Object.assign({}, EVENTS))
+  });
+
+})(window);
