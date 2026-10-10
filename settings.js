@@ -1,228 +1,444 @@
 
-/* =========================================
+/* ========================================
    MY LIFE OS — SETTINGS MANAGER
-   File: settings.js
-========================================= */
+   إدارة إعدادات التطبيق
+======================================== */
 
-const SettingsManager = (() => {
-    "use strict";
+"use strict";
 
-    const STORAGE_KEY = "user-settings";
+(function (window) {
+  if (window.SettingsManager) {
+    console.warn("[MY LIFE OS] SettingsManager موجود مسبقًا.");
+    return;
+  }
 
-    const DEFAULTS = {
-        language: "ar",
-        theme: "dark",
-        weekStartsOn: "saturday",
-        timeFormat: "24h",
-        reminderPreference: true,
-        dailyReviewEnabled: true,
-        weeklyReviewEnabled: true,
-        motivationalMessages: true,
-        compactLayout: false
+  const DEFAULT_SETTINGS = {
+    language: "ar",
+    direction: "rtl",
+    theme: "dark",
+    accentColor: "gold",
+    startPage: "dashboard",
+    weekStartsOn: 6,
+    notificationsEnabled: true,
+    confirmBeforeDelete: true,
+    compactMode: false,
+    showCompletedTasks: true,
+    dailyReminderEnabled: false,
+    dailyReminderTime: "20:00"
+  };
+
+  const ALLOWED_THEMES = ["dark", "light", "system"];
+
+  const ALLOWED_ACCENTS = [
+    "gold",
+    "blue",
+    "green",
+    "purple",
+    "rose"
+  ];
+
+  const ALLOWED_START_PAGES = [
+    "dashboard",
+    "goals",
+    "tasks",
+    "schedule",
+    "habits",
+    "plan90",
+    "reviews",
+    "health",
+    "sport",
+    "learning",
+    "career",
+    "finance",
+    "relationships",
+    "digital-life",
+    "notes",
+    "memo",
+    "analytics",
+    "settings"
+  ];
+
+  let settings = { ...DEFAULT_SETTINGS };
+  let initialized = false;
+
+  function getStorage() {
+    return window.AppStorage || null;
+  }
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function readSavedSettings() {
+    const storage = getStorage();
+
+    if (!storage || typeof storage.get !== "function") {
+      return {};
+    }
+
+    try {
+      const saved = storage.get("settings");
+
+      if (
+        !saved ||
+        typeof saved !== "object" ||
+        Array.isArray(saved)
+      ) {
+        return {};
+      }
+
+      return saved;
+    } catch (error) {
+      console.error(
+        "[MY LIFE OS] تعذرت قراءة الإعدادات.",
+        error
+      );
+
+      return {};
+    }
+  }
+
+  function normalizeSettings(saved) {
+    const result = {
+      ...DEFAULT_SETTINGS,
+      ...saved
     };
 
-    const ALLOWED_VALUES = {
-        language: ["ar", "fr", "en"],
-        theme: ["dark", "light", "system"],
-        weekStartsOn: ["saturday", "sunday", "monday"],
-        timeFormat: ["12h", "24h"]
+    result.language = "ar";
+    result.direction = "rtl";
+
+    if (!ALLOWED_THEMES.includes(result.theme)) {
+      result.theme = DEFAULT_SETTINGS.theme;
+    }
+
+    if (!ALLOWED_ACCENTS.includes(result.accentColor)) {
+      result.accentColor = DEFAULT_SETTINGS.accentColor;
+    }
+
+    if (!ALLOWED_START_PAGES.includes(result.startPage)) {
+      result.startPage = DEFAULT_SETTINGS.startPage;
+    }
+
+    if (
+      !Number.isInteger(result.weekStartsOn) ||
+      result.weekStartsOn < 0 ||
+      result.weekStartsOn > 6
+    ) {
+      result.weekStartsOn = DEFAULT_SETTINGS.weekStartsOn;
+    }
+
+    [
+      "notificationsEnabled",
+      "confirmBeforeDelete",
+      "compactMode",
+      "showCompletedTasks",
+      "dailyReminderEnabled"
+    ].forEach((key) => {
+      result[key] = Boolean(result[key]);
+    });
+
+    if (
+      typeof result.dailyReminderTime !== "string" ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+        result.dailyReminderTime
+      )
+    ) {
+      result.dailyReminderTime =
+        DEFAULT_SETTINGS.dailyReminderTime;
+    }
+
+    return result;
+  }
+
+  function saveSettings() {
+    const storage = getStorage();
+
+    if (!storage || typeof storage.set !== "function") {
+      return false;
+    }
+
+    try {
+      return storage.set("settings", clone(settings)) !== false;
+    } catch (error) {
+      console.error(
+        "[MY LIFE OS] تعذر حفظ الإعدادات.",
+        error
+      );
+
+      return false;
+    }
+  }
+
+  function emitChange(key, value) {
+    if (
+      window.AppEvents &&
+      typeof window.AppEvents.emit === "function"
+    ) {
+      window.AppEvents.emit("settings:changed", {
+        key,
+        value,
+        settings: getAll()
+      });
+    }
+  }
+
+  function applyAppearance() {
+    const appearance = window.AppearanceManager;
+
+    if (!appearance) {
+      return;
+    }
+
+    if (typeof appearance.setTheme === "function") {
+      /*
+       * setTheme تحفظ إعدادات المظهر بنفسها.
+       * لذلك نطبقها فقط عند اختلاف القيمة الحالية.
+       */
+      const current = appearance.getSettings();
+
+      if (current.theme !== settings.theme) {
+        appearance.setTheme(settings.theme);
+      }
+    }
+
+    if (typeof appearance.setAccentColor === "function") {
+      const current = appearance.getSettings();
+
+      if (current.accentColor !== settings.accentColor) {
+        appearance.setAccentColor(settings.accentColor);
+      }
+    }
+  }
+
+  function initialize() {
+    if (initialized) {
+      return getAll();
+    }
+
+    settings = normalizeSettings(readSavedSettings());
+
+    /*
+     * حفظ القيم الافتراضية والقيم المصححة
+     * دون حذف بقية بيانات التطبيق.
+     */
+    saveSettings();
+
+    initialized = true;
+
+    if (window.AppearanceManager) {
+      applyAppearance();
+    }
+
+    if (window.AppEvents) {
+      window.AppEvents.emit("settings:initialized", getAll());
+    }
+
+    console.info("[MY LIFE OS] تمت تهيئة الإعدادات.");
+
+    return getAll();
+  }
+
+  function get(key) {
+    if (
+      typeof key !== "string" ||
+      !Object.prototype.hasOwnProperty.call(settings, key)
+    ) {
+      return undefined;
+    }
+
+    return settings[key];
+  }
+
+  function getAll() {
+    return clone(settings);
+  }
+
+  function set(key, value) {
+    if (
+      typeof key !== "string" ||
+      !Object.prototype.hasOwnProperty.call(
+        DEFAULT_SETTINGS,
+        key
+      )
+    ) {
+      return {
+        success: false,
+        message: "الإعداد المطلوب غير معروف."
+      };
+    }
+
+    const candidate = normalizeSettings({
+      ...settings,
+      [key]: value
+    });
+
+    /*
+     * منع القيم غير المقبولة بدل حفظها.
+     */
+    if (
+      key === "theme" &&
+      !ALLOWED_THEMES.includes(value)
+    ) {
+      return {
+        success: false,
+        message: "الوضع المحدد غير صالح."
+      };
+    }
+
+    if (
+      key === "accentColor" &&
+      !ALLOWED_ACCENTS.includes(value)
+    ) {
+      return {
+        success: false,
+        message: "لون التمييز غير صالح."
+      };
+    }
+
+    if (
+      key === "startPage" &&
+      !ALLOWED_START_PAGES.includes(value)
+    ) {
+      return {
+        success: false,
+        message: "صفحة البداية غير معروفة."
+      };
+    }
+
+    if (
+      key === "weekStartsOn" &&
+      (!Number.isInteger(value) || value < 0 || value > 6)
+    ) {
+      return {
+        success: false,
+        message: "يجب أن يكون أول يوم في الأسبوع رقمًا من 0 إلى 6."
+      };
+    }
+
+    if (
+      [
+        "notificationsEnabled",
+        "confirmBeforeDelete",
+        "compactMode",
+        "showCompletedTasks",
+        "dailyReminderEnabled"
+      ].includes(key) &&
+      typeof value !== "boolean"
+    ) {
+      return {
+        success: false,
+        message: "هذه القيمة يجب أن تكون منطقية."
+      };
+    }
+
+    if (
+      key === "dailyReminderTime" &&
+      (
+        typeof value !== "string" ||
+        !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+      )
+    ) {
+      return {
+        success: false,
+        message: "صيغة الوقت غير صحيحة."
+      };
+    }
+
+    settings = candidate;
+
+    const saved = saveSettings();
+
+    if (
+      key === "theme" ||
+      key === "accentColor"
+    ) {
+      applyAppearance();
+    }
+
+    emitChange(key, settings[key]);
+
+    return {
+      success: true,
+      key,
+      value: settings[key],
+      saved
     };
+  }
 
-    function cloneDefaults() {
-        return { ...DEFAULTS };
+  function update(values) {
+    if (
+      !values ||
+      typeof values !== "object" ||
+      Array.isArray(values)
+    ) {
+      return {
+        success: false,
+        message: "يجب تقديم مجموعة إعدادات صحيحة."
+      };
     }
 
-    function readSettings() {
-        try {
-            const stored = AppStorage.get(STORAGE_KEY);
+    const previous = getAll();
 
-            if (!stored || typeof stored !== "object") {
-                return cloneDefaults();
-            }
-
-            return {
-                ...DEFAULTS,
-                ...stored
-            };
-        } catch (error) {
-            console.error("SettingsManager: read failed.", error);
-            return cloneDefaults();
-        }
-    }
-
-    function getAll() {
-        return readSettings();
-    }
-
-    function get(key) {
-        const settings = readSettings();
-
-        if (!Object.prototype.hasOwnProperty.call(settings, key)) {
-            return undefined;
-        }
-
-        return settings[key];
-    }
-
-    function validateSetting(key, value) {
-        if (!Object.prototype.hasOwnProperty.call(DEFAULTS, key)) {
-            return {
-                valid: false,
-                message: "الإعداد غير معروف."
-            };
-        }
-
-        if (ALLOWED_VALUES[key]) {
-            if (!ALLOWED_VALUES[key].includes(value)) {
-                return {
-                    valid: false,
-                    message: "القيمة المحددة غير مدعومة لهذا الإعداد."
-                };
-            }
-
-            return { valid: true };
-        }
-
-        if (typeof DEFAULTS[key] === "boolean") {
-            if (typeof value !== "boolean") {
-                return {
-                    valid: false,
-                    message: "يجب أن تكون قيمة الإعداد صحيحة أو خاطئة."
-                };
-            }
-
-            return { valid: true };
-        }
-
+    for (const key of Object.keys(values)) {
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          DEFAULT_SETTINGS,
+          key
+        )
+      ) {
         return {
-            valid: false,
-            message: "نوع القيمة غير مدعوم."
+          success: false,
+          message: "إعداد غير معروف: " + key
         };
-    }
+      }
 
-    function set(key, value) {
-        const validation = validateSetting(key, value);
+      const result = set(key, values[key]);
 
-        if (!validation.valid) {
-            return {
-                success: false,
-                message: validation.message
-            };
-        }
+      if (!result.success) {
+        settings = previous;
+        saveSettings();
+        applyAppearance();
 
-        const settings = readSettings();
-        settings[key] = value;
-
-        try {
-            const saved = AppStorage.set(STORAGE_KEY, settings);
-
-            if (saved === false) {
-                return {
-                    success: false,
-                    message: "تعذر حفظ الإعداد."
-                };
-            }
-
-            return {
-                success: true,
-                settings: settings
-            };
-        } catch (error) {
-            console.error("SettingsManager: save failed.", error);
-
-            return {
-                success: false,
-                message: "حدث خطأ أثناء حفظ الإعداد."
-            };
-        }
-    }
-
-    function update(changes = {}) {
-        if (
-            !changes ||
-            typeof changes !== "object" ||
-            Array.isArray(changes)
-        ) {
-            return {
-                success: false,
-                message: "بيانات الإعدادات غير صالحة."
-            };
-        }
-
-        const current = readSettings();
-        const updated = { ...current };
-
-        for (const [key, value] of Object.entries(changes)) {
-            const validation = validateSetting(key, value);
-
-            if (!validation.valid) {
-                return {
-                    success: false,
-                    message: validation.message,
-                    invalidKey: key
-                };
-            }
-
-            updated[key] = value;
-        }
-
-        try {
-            const saved = AppStorage.set(STORAGE_KEY, updated);
-
-            if (saved === false) {
-                return {
-                    success: false,
-                    message: "تعذر حفظ الإعدادات."
-                };
-            }
-
-            return {
-                success: true,
-                settings: updated
-            };
-        } catch (error) {
-            console.error("SettingsManager: update failed.", error);
-
-            return {
-                success: false,
-                message: "حدث خطأ أثناء حفظ الإعدادات."
-            };
-        }
-    }
-
-    function reset() {
-        try {
-            const saved = AppStorage.set(
-                STORAGE_KEY,
-                cloneDefaults()
-            );
-
-            if (saved === false) {
-                return {
-                    success: false,
-                    message: "تعذر إعادة الإعدادات الافتراضية."
-                };
-            }
-
-            return {
-                success: true,
-                message: "تمت إعادة الإعدادات الافتراضية.",
-                settings: cloneDefaults()
-            };
-        } catch (error) {
-            return {
-                success: false,
-                message: "تعذر إعادة الإعدادات."
-            };
-        }
+        return result;
+      }
     }
 
     return {
-        DEFAULTS: cloneDefaults(),
-        getAll,
-        get,
-        set,
-        update,
-        reset
+      success: true,
+      settings: getAll()
     };
-})();
+  }
+
+  function reset() {
+    settings = { ...DEFAULT_SETTINGS };
+
+    const saved = saveSettings();
+
+    applyAppearance();
+
+    if (window.AppEvents) {
+      window.AppEvents.emit("settings:reset", getAll());
+    }
+
+    return {
+      success: true,
+      saved,
+      settings: getAll()
+    };
+  }
+
+  function getDefaults() {
+    return { ...DEFAULT_SETTINGS };
+  }
+
+  window.SettingsManager = Object.freeze({
+    initialize,
+    get,
+    getAll,
+    set,
+    update,
+    reset,
+    getDefaults
+  });
+
+})(window);
