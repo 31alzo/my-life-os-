@@ -1,654 +1,1704 @@
+الملف: "learning.js"
 
-/* =========================================
-   MY LIFE OS — LEARNING MODULE
+استبدل محتوى الملف بالكامل بالكود التالي:
+
+/* =========================================================
+   MY LIFE OS — LEARNING MANAGER
    File: learning.js
-========================================= */
+   Purpose: Manage learning paths, resources, sessions,
+            lesson progress, skills, goals and reviews.
+   ========================================================= */
 
-const LearningManager = (() => {
-    "use strict";
+(function (window) {
+  "use strict";
 
-    const STORAGE_KEY = "learning-data";
+  const STORAGE_KEY = "learning-records";
+  const VERSION = 1;
 
-    const LEARNING_TYPES = [
-        { id: "study", name: "الدراسة الأكاديمية" },
-        { id: "reading", name: "القراءة" },
-        { id: "research", name: "البحث والتحليل" },
-        { id: "language", name: "تعلم اللغات" },
-        { id: "digital", name: "المهارات الرقمية" },
-        { id: "professional", name: "المهارات المهنية" },
-        { id: "other", name: "تعلم آخر" }
-    ];
+  const STATUS = Object.freeze({
+    PLANNED: "planned",
+    IN_PROGRESS: "in-progress",
+    COMPLETED: "completed",
+    PAUSED: "paused",
+    ARCHIVED: "archived"
+  });
 
-    function createId() {
-        if (
-            typeof AppUtils !== "undefined" &&
-            typeof AppUtils.createId === "function"
-        ) {
-            return AppUtils.createId();
+  const VALID_STATUSES = Object.values(STATUS);
+
+  let initialized = false;
+  let records = [];
+  let sessions = [];
+  let sequence = 0;
+
+  /* ---------------------------------------------------------
+     UTILITIES
+  --------------------------------------------------------- */
+
+  function makeId(prefix) {
+    sequence += 1;
+
+    const randomPart =
+      Math.random().toString(36).slice(2, 10);
+
+    return [
+      prefix,
+      Date.now().toString(36),
+      sequence.toString(36),
+      randomPart
+    ].join("-");
+  }
+
+  function nowISO() {
+    return new Date().toISOString();
+  }
+
+  function isObject(value) {
+    return (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    );
+  }
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function cleanText(value, maxLength) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim().slice(0, maxLength || 500);
+  }
+
+  function cleanStringArray(value, maxItems, maxLength) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        value
+          .filter(function (item) {
+            return typeof item === "string";
+          })
+          .map(function (item) {
+            return cleanText(item, maxLength || 100);
+          })
+          .filter(Boolean)
+      )
+    ).slice(0, maxItems || 100);
+  }
+
+  function normalizeDate(value) {
+    if (!value) {
+      return null;
+    }
+
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toISOString();
+  }
+
+  function normalizeNumber(value, min, max) {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+      return min;
+    }
+
+    return Math.min(max, Math.max(min, number));
+  }
+
+  function requireId(id) {
+    const normalized = cleanText(id, 150);
+
+    if (!normalized) {
+      throw new Error("معرّف سجل التعلم مطلوب.");
+    }
+
+    return normalized;
+  }
+
+  function requireTitle(title) {
+    const normalized = cleanText(title, 200);
+
+    if (!normalized) {
+      throw new Error("عنوان مسار التعلم مطلوب.");
+    }
+
+    return normalized;
+  }
+
+  function findRecord(id) {
+    const normalized = requireId(id);
+
+    return records.find(function (record) {
+      return record.id === normalized;
+    }) || null;
+  }
+
+  function ensureInitialized() {
+    if (!initialized) {
+      initialize();
+    }
+  }
+
+  /* ---------------------------------------------------------
+     STORAGE ADAPTER
+     Supports common AppStorage method shapes.
+     The exact project storage API will be verified later.
+  --------------------------------------------------------- */
+
+  function readStorage(key, fallback) {
+    const storage = window.AppStorage;
+
+    if (storage) {
+      try {
+        if (typeof storage.get === "function") {
+          const value = storage.get(key);
+
+          if (value !== undefined && value !== null) {
+            return value;
+          }
         }
 
-        return (
-            "learning-" +
-            Date.now().toString(36) +
-            "-" +
-            Math.random().toString(36).slice(2, 9)
+        if (typeof storage.getItem === "function") {
+          const value = storage.getItem(key);
+
+          if (value !== undefined && value !== null) {
+            return typeof value === "string"
+              ? JSON.parse(value)
+              : value;
+          }
+        }
+
+        if (typeof storage.load === "function") {
+          const value = storage.load(key);
+
+          if (value !== undefined && value !== null) {
+            return value;
+          }
+        }
+      } catch (error) {
+        console.error(
+          "[LearningManager] Storage read failed:",
+          error
         );
+      }
     }
 
-    function getData() {
-        if (
-            typeof AppStorage === "undefined" ||
-            typeof AppStorage.get !== "function"
-        ) {
-            throw new Error(
-                "يجب تحميل storage.js قبل learning.js"
-            );
+    try {
+      const value = window.localStorage.getItem(key);
+
+      return value === null
+        ? fallback
+        : JSON.parse(value);
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  function writeStorage(key, value) {
+    const storage = window.AppStorage;
+    const payload = clone(value);
+
+    if (storage) {
+      try {
+        if (typeof storage.set === "function") {
+          storage.set(key, payload);
+          return true;
         }
 
-        const data = AppStorage.get(STORAGE_KEY, {});
-
-        return {
-            subjects: Array.isArray(data.subjects)
-                ? data.subjects
-                : [],
-            sessions: Array.isArray(data.sessions)
-                ? data.sessions
-                : [],
-            skills: Array.isArray(data.skills)
-                ? data.skills
-                : [],
-            knowledge: Array.isArray(data.knowledge)
-                ? data.knowledge
-                : [],
-            updatedAt: data.updatedAt || null
-        };
-    }
-
-    function saveData(data) {
-        if (
-            typeof AppStorage === "undefined" ||
-            typeof AppStorage.set !== "function"
-        ) {
-            throw new Error(
-                "يجب تحميل storage.js قبل learning.js"
-            );
+        if (typeof storage.setItem === "function") {
+          storage.setItem(key, JSON.stringify(payload));
+          return true;
         }
 
-        data.updatedAt = new Date().toISOString();
-        AppStorage.set(STORAGE_KEY, data);
-
-        return data;
-    }
-
-    function validateText(value, label) {
-        if (
-            typeof value !== "string" ||
-            !value.trim()
-        ) {
-            throw new Error(label + " مطلوب.");
+        if (typeof storage.save === "function") {
+          storage.save(key, payload);
+          return true;
         }
-
-        return value.trim();
-    }
-
-    function validateDate(value) {
-        const date = value ? new Date(value) : new Date();
-
-        if (Number.isNaN(date.getTime())) {
-            throw new Error("التاريخ غير صالح.");
-        }
-
-        return date.toISOString();
-    }
-
-    function validateMinutes(value) {
-        const minutes = Number(value);
-
-        if (
-            !Number.isFinite(minutes) ||
-            minutes <= 0 ||
-            minutes > 1440
-        ) {
-            throw new Error(
-                "مدة التعلم يجب أن تكون بين دقيقة و1440 دقيقة."
-            );
-        }
-
-        return minutes;
-    }
-
-    function validateType(typeId) {
-        const type = LEARNING_TYPES.find(
-            item => item.id === typeId
+      } catch (error) {
+        console.error(
+          "[LearningManager] Storage write failed:",
+          error
         );
+      }
+    }
 
-        if (!type) {
-            throw new Error("نوع التعلم غير صالح.");
+    try {
+      window.localStorage.setItem(
+        key,
+        JSON.stringify(payload)
+      );
+
+      return true;
+    } catch (error) {
+      console.error(
+        "[LearningManager] Local storage write failed:",
+        error
+      );
+
+      return false;
+    }
+  }
+
+  function persist() {
+    const savedRecords = writeStorage(
+      STORAGE_KEY,
+      {
+        version: VERSION,
+        records: records
+      }
+    );
+
+    const savedSessions = writeStorage(
+      STORAGE_KEY + "-sessions",
+      {
+        version: VERSION,
+        sessions: sessions
+      }
+    );
+
+    return savedRecords && savedSessions;
+  }
+
+  /* ---------------------------------------------------------
+     EVENTS
+  --------------------------------------------------------- */
+
+  function emit(eventName, detail) {
+    const payload = {
+      module: "learning",
+      event: eventName,
+      timestamp: nowISO(),
+      detail: detail || {}
+    };
+
+    const events = window.AppEvents;
+
+    if (events) {
+      try {
+        if (typeof events.emit === "function") {
+          events.emit("learning:" + eventName, payload);
+        } else if (typeof events.publish === "function") {
+          events.publish("learning:" + eventName, payload);
+        } else if (typeof events.dispatch === "function") {
+          events.dispatch("learning:" + eventName, payload);
         }
-
-        return type;
-    }
-
-    function getTypes() {
-        return LEARNING_TYPES.map(type => ({ ...type }));
-    }
-
-    // إضافة مادة أو مجال تعلم
-    function addSubject(input = {}) {
-        const data = getData();
-
-        const subject = {
-            id: createId(),
-            title: validateText(
-                input.title,
-                "اسم المادة أو المجال"
-            ),
-            typeId: input.typeId || "study",
-            description: String(
-                input.description || ""
-            ).trim(),
-            targetHours: Math.max(
-                0,
-                Number(input.targetHours) || 0
-            ),
-            active: true,
-            createdAt: new Date().toISOString()
-        };
-
-        validateType(subject.typeId);
-
-        data.subjects.push(subject);
-        saveData(data);
-
-        return { ...subject };
-    }
-
-    function getSubjects(options = {}) {
-        const data = getData();
-
-        let subjects = data.subjects;
-
-        if (options.activeOnly) {
-            subjects = subjects.filter(
-                item => item.active
-            );
-        }
-
-        if (options.typeId) {
-            validateType(options.typeId);
-
-            subjects = subjects.filter(
-                item => item.typeId === options.typeId
-            );
-        }
-
-        return subjects.map(item => ({ ...item }));
-    }
-
-    function updateSubject(id, changes = {}) {
-        const data = getData();
-
-        const subject = data.subjects.find(
-            item => item.id === id
+      } catch (error) {
+        console.error(
+          "[LearningManager] Event dispatch failed:",
+          error
         );
-
-        if (!subject) {
-            throw new Error("المادة أو المجال غير موجود.");
-        }
-
-        if (changes.title !== undefined) {
-            subject.title = validateText(
-                changes.title,
-                "اسم المادة أو المجال"
-            );
-        }
-
-        if (changes.typeId !== undefined) {
-            validateType(changes.typeId);
-            subject.typeId = changes.typeId;
-        }
-
-        if (changes.description !== undefined) {
-            subject.description = String(
-                changes.description || ""
-            ).trim();
-        }
-
-        if (changes.targetHours !== undefined) {
-            const hours = Number(changes.targetHours);
-
-            if (!Number.isFinite(hours) || hours < 0) {
-                throw new Error("عدد الساعات المستهدفة غير صالح.");
-            }
-
-            subject.targetHours = hours;
-        }
-
-        if (changes.active !== undefined) {
-            subject.active = Boolean(changes.active);
-        }
-
-        saveData(data);
-
-        return { ...subject };
+      }
     }
 
-    function deleteSubject(id) {
-        const data = getData();
-        const oldLength = data.subjects.length;
-
-        data.subjects = data.subjects.filter(
-            item => item.id !== id
-        );
-
-        if (data.subjects.length === oldLength) {
-            return false;
-        }
-
-        saveData(data);
-        return true;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("lifeos:learning:" + eventName, {
+          detail: payload
+        })
+      );
+    } catch (error) {
+      // Event notifications are optional.
     }
+  }
 
-    // تسجيل جلسة تعلم
-    function addSession(input = {}) {
-        const data = getData();
-
-        const subject = data.subjects.find(
-            item => item.id === input.subjectId
-        );
-
-        if (!subject) {
-            throw new Error(
-                "اختر مادة أو مجال تعلم موجودًا."
-            );
-        }
-
-        const session = {
-            id: createId(),
-            subjectId: subject.id,
-            subjectTitle: subject.title,
-            minutes: validateMinutes(input.minutes),
-            date: validateDate(input.date),
-            method: String(input.method || "").trim(),
-            summary: String(input.summary || "").trim(),
-            understood: input.understood === true,
-            nextStep: String(input.nextStep || "").trim(),
-            createdAt: new Date().toISOString()
-        };
-
-        data.sessions.push(session);
-        saveData(data);
-
-        return { ...session };
+  function saveOrThrow() {
+    if (!persist()) {
+      throw new Error(
+        "تعذر حفظ بيانات التعلم. تحقق من مساحة التخزين."
+      );
     }
-
-    function getSessions(options = {}) {
-        const data = getData();
-
-        let sessions = data.sessions;
-
-        if (options.subjectId) {
-            sessions = sessions.filter(
-                item => item.subjectId === options.subjectId
-            );
-        }
-
-        if (options.from) {
-            const from = new Date(options.from);
-
-            if (Number.isNaN(from.getTime())) {
-                throw new Error("تاريخ البداية غير صالح.");
-            }
-
-            sessions = sessions.filter(
-                item => new Date(item.date) >= from
-            );
-        }
-
-        if (options.to) {
-            const to = new Date(options.to);
-
-            if (Number.isNaN(to.getTime())) {
-                throw new Error("تاريخ النهاية غير صالح.");
-            }
-
-            sessions = sessions.filter(
-                item => new Date(item.date) <= to
-            );
-        }
-
-        return sessions
-            .slice()
-            .sort(
-                (a, b) =>
-                    new Date(b.date) - new Date(a.date)
-            )
-            .map(item => ({ ...item }));
-    }
-
-    function updateSession(id, changes = {}) {
-        const data = getData();
-
-        const session = data.sessions.find(
-            item => item.id === id
-        );
-
-        if (!session) {
-            throw new Error("جلسة التعلم غير موجودة.");
-        }
-
-        if (changes.subjectId !== undefined) {
-            const subject = data.subjects.find(
-                item => item.id === changes.subjectId
-            );
-
-            if (!subject) {
-                throw new Error("المادة أو المجال غير موجود.");
-            }
-
-            session.subjectId = subject.id;
-            session.subjectTitle = subject.title;
-        }
-
-        if (changes.minutes !== undefined) {
-            session.minutes = validateMinutes(
-                changes.minutes
-            );
-        }
-
-        if (changes.date !== undefined) {
-            session.date = validateDate(changes.date);
-        }
-
-        if (changes.method !== undefined) {
-            session.method = String(
-                changes.method || ""
-            ).trim();
-        }
-
-        if (changes.summary !== undefined) {
-            session.summary = String(
-                changes.summary || ""
-            ).trim();
-        }
-
-        if (changes.understood !== undefined) {
-            session.understood = Boolean(
-                changes.understood
-            );
-        }
-
-        if (changes.nextStep !== undefined) {
-            session.nextStep = String(
-                changes.nextStep || ""
-            ).trim();
-        }
-
-        saveData(data);
-
-        return { ...session };
-    }
-
-    function deleteSession(id) {
-        const data = getData();
-        const oldLength = data.sessions.length;
-
-        data.sessions = data.sessions.filter(
-            item => item.id !== id
-        );
-
-        if (data.sessions.length === oldLength) {
-            return false;
-        }
-
-        saveData(data);
-        return true;
-    }
-
-    // المهارات التي يريد المستخدم اكتسابها
-    function addSkill(input = {}) {
-        const data = getData();
-
-        const skill = {
-            id: createId(),
-            name: validateText(
-                input.name,
-                "اسم المهارة"
-            ),
-            level: ["beginner", "intermediate", "advanced"]
-                .includes(input.level)
-                ? input.level
-                : "beginner",
-            targetLevel: String(
-                input.targetLevel || ""
-            ).trim(),
-            nextStep: String(
-                input.nextStep || ""
-            ).trim(),
-            active: true,
-            createdAt: new Date().toISOString()
-        };
-
-        data.skills.push(skill);
-        saveData(data);
-
-        return { ...skill };
-    }
-
-    function getSkills(options = {}) {
-        const data = getData();
-
-        let skills = data.skills;
-
-        if (options.activeOnly) {
-            skills = skills.filter(
-                item => item.active
-            );
-        }
-
-        return skills.map(item => ({ ...item }));
-    }
-
-    function updateSkill(id, changes = {}) {
-        const data = getData();
-
-        const skill = data.skills.find(
-            item => item.id === id
-        );
-
-        if (!skill) {
-            throw new Error("المهارة غير موجودة.");
-        }
-
-        if (changes.name !== undefined) {
-            skill.name = validateText(
-                changes.name,
-                "اسم المهارة"
-            );
-        }
-
-        if (changes.level !== undefined) {
-            const allowed = [
-                "beginner",
-                "intermediate",
-                "advanced"
-            ];
-
-            if (!allowed.includes(changes.level)) {
-                throw new Error("مستوى المهارة غير صالح.");
-            }
-
-            skill.level = changes.level;
-        }
-
-        if (changes.targetLevel !== undefined) {
-            skill.targetLevel = String(
-                changes.targetLevel || ""
-            ).trim();
-        }
-
-        if (changes.nextStep !== undefined) {
-            skill.nextStep = String(
-                changes.nextStep || ""
-            ).trim();
-        }
-
-        if (changes.active !== undefined) {
-            skill.active = Boolean(changes.active);
-        }
-
-        saveData(data);
-
-        return { ...skill };
-    }
-
-    function deleteSkill(id) {
-        const data = getData();
-        const oldLength = data.skills.length;
-
-        data.skills = data.skills.filter(
-            item => item.id !== id
-        );
-
-        if (data.skills.length === oldLength) {
-            return false;
-        }
-
-        saveData(data);
-        return true;
-    }
-
-    // حفظ معلومة أو خلاصة بحث
-    function addKnowledge(input = {}) {
-        const data = getData();
-
-        const entry = {
-            id: createId(),
-            title: validateText(
-                input.title,
-                "عنوان المعلومة"
-            ),
-            content: validateText(
-                input.content,
-                "محتوى المعلومة"
-            ),
-            source: String(input.source || "").trim(),
-            tags: Array.isArray(input.tags)
-                ? input.tags
-                    .filter(tag => typeof tag === "string")
-                    .map(tag => tag.trim())
-                    .filter(Boolean)
-                : [],
-            verified: input.verified === true,
-            date: validateDate(input.date),
-            createdAt: new Date().toISOString()
-        };
-
-        data.knowledge.push(entry);
-        saveData(data);
-
-        return { ...entry };
-    }
-
-    function getKnowledge(options = {}) {
-        const data = getData();
-
-        let entries = data.knowledge;
-
-        if (options.verifiedOnly) {
-            entries = entries.filter(
-                item => item.verified
-            );
-        }
-
-        if (options.query) {
-            const query = String(
-                options.query
-            ).trim().toLowerCase();
-
-            entries = entries.filter(item =>
-                (
-                    item.title + " " +
-                    item.content + " " +
-                    item.source + " " +
-                    item.tags.join(" ")
-                ).toLowerCase().includes(query)
-            );
-        }
-
-        return entries
-            .slice()
-            .sort(
-                (a, b) =>
-                    new Date(b.date) - new Date(a.date)
-            )
-            .map(item => ({
-                ...item,
-                tags: [...item.tags]
-            }));
-    }
-
-    function deleteKnowledge(id) {
-        const data = getData();
-        const oldLength = data.knowledge.length;
-
-        data.knowledge = data.knowledge.filter(
-            item => item.id !== id
-        );
-
-        if (data.knowledge.length === oldLength) {
-            return false;
-        }
-
-        saveData(data);
-        return true;
-    }
-
-    function getStats(options = {}) {
-        const sessions = getSessions(options);
-
-        const totalMinutes = sessions.reduce(
-            (sum, item) => sum + item.minutes,
-            0
-        );
-
-        const understoodCount = sessions.filter(
-            item => item.understood
-        ).length;
-
-        return {
-            sessionCount: sessions.length,
-            totalMinutes,
-            totalHours: Math.round(
-                totalMinutes / 60 * 100
-            ) / 100,
-            understoodSessions: understoodCount,
-            knowledgeCount: getKnowledge().length,
-            activeSkills: getSkills({
-                activeOnly: true
-            }).length
-        };
-    }
+  }
+
+  /* ---------------------------------------------------------
+     RECORD NORMALIZATION
+  --------------------------------------------------------- */
+
+  function normalizeRecord(input, existing) {
+    const source = isObject(input) ? input : {};
+    const previous = existing || {};
+    const timestamp = nowISO();
+
+    const requestedStatus =
+      source.status !== undefined
+        ? source.status
+        : previous.status;
+
+    const status = VALID_STATUSES.includes(requestedStatus)
+      ? requestedStatus
+      : STATUS.PLANNED;
+
+    const targetMinutes = normalizeNumber(
+      source.targetMinutes !== undefined
+        ? source.targetMinutes
+        : previous.targetMinutes,
+      0,
+      10000000
+    );
+
+    const progress = normalizeNumber(
+      source.progress !== undefined
+        ? source.progress
+        : previous.progress,
+      0,
+      100
+    );
+
+    const completed =
+      status === STATUS.COMPLETED || progress >= 100;
 
     return {
-        getTypes,
-        addSubject,
-        getSubjects,
-        updateSubject,
-        deleteSubject,
-        addSession,
-        getSessions,
-        updateSession,
-        deleteSession,
-        addSkill,
-        getSkills,
-        updateSkill,
-        deleteSkill,
-        addKnowledge,
-        getKnowledge,
-        deleteKnowledge,
-        getStats
-    };
-})();
+      id: previous.id || makeId("learn"),
 
-/* End of learning.js */
+      title: requireTitle(
+        source.title !== undefined
+          ? source.title
+          : previous.title
+      ),
+
+      description: cleanText(
+        source.description !== undefined
+          ? source.description
+          : previous.description,
+        5000
+      ),
+
+      category: cleanText(
+        source.category !== undefined
+          ? source.category
+          : previous.category,
+        100
+      ),
+
+      subject: cleanText(
+        source.subject !== undefined
+          ? source.subject
+          : previous.subject,
+        150
+      ),
+
+      skills: cleanStringArray(
+        source.skills !== undefined
+          ? source.skills
+          : previous.skills,
+        100,
+        100
+      ),
+
+      goals: cleanStringArray(
+        source.goals !== undefined
+          ? source.goals
+          : previous.goals,
+        100,
+        300
+      ),
+
+      resources: Array.isArray(
+        source.resources !== undefined
+          ? source.resources
+          : previous.resources
+      )
+        ? (
+            source.resources !== undefined
+              ? source.resources
+              : previous.resources
+          )
+            .filter(isObject)
+            .slice(0, 200)
+            .map(function (resource) {
+              return {
+                id: cleanText(resource.id, 150) ||
+                  makeId("resource"),
+
+                title: cleanText(resource.title, 200),
+
+                type: cleanText(resource.type, 50) ||
+                  "other",
+
+                url: cleanText(resource.url, 2000),
+
+                notes: cleanText(resource.notes, 2000),
+
+                completed: resource.completed === true,
+
+                createdAt:
+                  normalizeDate(resource.createdAt) ||
+                  timestamp
+              };
+            })
+        : [],
+
+      lessons: Array.isArray(
+        source.lessons !== undefined
+          ? source.lessons
+          : previous.lessons
+      )
+        ? (
+            source.lessons !== undefined
+              ? source.lessons
+              : previous.lessons
+          )
+            .filter(isObject)
+            .slice(0, 1000)
+            .map(function (lesson, index) {
+              return {
+                id: cleanText(lesson.id, 150) ||
+                  makeId("lesson"),
+
+                title: cleanText(lesson.title, 200) ||
+                  "درس " + (index + 1),
+
+                notes: cleanText(lesson.notes, 5000),
+
+                progress: normalizeNumber(
+                  lesson.progress,
+                  0,
+                  100
+                ),
+
+                completed: lesson.completed === true,
+
+                completedAt:
+                  normalizeDate(lesson.completedAt),
+
+                updatedAt:
+                  normalizeDate(lesson.updatedAt) ||
+                  timestamp
+              };
+            })
+        : [],
+
+      progress: completed ? 100 : progress,
+
+      status: completed
+        ? STATUS.COMPLETED
+        : status,
+
+      targetMinutes: targetMinutes,
+
+      totalMinutes: normalizeNumber(
+        previous.totalMinutes,
+        0,
+        100000000
+      ),
+
+      startedAt:
+        normalizeDate(source.startedAt) ||
+        normalizeDate(previous.startedAt) ||
+        (
+          status === STATUS.IN_PROGRESS
+            ? timestamp
+            : null
+        ),
+
+      targetDate:
+        normalizeDate(source.targetDate) ||
+        normalizeDate(previous.targetDate),
+
+      completedAt: completed
+        ? (
+            normalizeDate(previous.completedAt) ||
+            timestamp
+          )
+        : null,
+
+      lastStudiedAt:
+        normalizeDate(previous.lastStudiedAt),
+
+      reviewNotes: Array.isArray(
+        source.reviewNotes !== undefined
+          ? source.reviewNotes
+          : previous.reviewNotes
+      )
+        ? (
+            source.reviewNotes !== undefined
+              ? source.reviewNotes
+              : previous.reviewNotes
+          )
+            .filter(isObject)
+            .slice(0, 500)
+            .map(function (review) {
+              return {
+                id: cleanText(review.id, 150) ||
+                  makeId("review"),
+
+                text: cleanText(review.text, 5000),
+
+                rating: normalizeNumber(
+                  review.rating,
+                  0,
+                  5
+                ),
+
+                createdAt:
+                  normalizeDate(review.createdAt) ||
+                  timestamp
+              };
+            })
+        : [],
+
+      tags: cleanStringArray(
+        source.tags !== undefined
+          ? source.tags
+          : previous.tags,
+        100,
+        100
+      ),
+
+      notes: cleanText(
+        source.notes !== undefined
+          ? source.notes
+          : previous.notes,
+        10000
+      ),
+
+      createdAt:
+        normalizeDate(previous.createdAt) ||
+        timestamp,
+
+      updatedAt: timestamp
+    };
+  }
+
+  /* ---------------------------------------------------------
+     INITIALIZATION
+  --------------------------------------------------------- */
+
+  function initialize() {
+    if (initialized) {
+      return getAll();
+    }
+
+    const storedRecords = readStorage(
+      STORAGE_KEY,
+      []
+    );
+
+    const storedSessions = readStorage(
+      STORAGE_KEY + "-sessions",
+      []
+    );
+
+    const recordList = Array.isArray(storedRecords)
+      ? storedRecords
+      : (
+          isObject(storedRecords) &&
+          Array.isArray(storedRecords.records)
+            ? storedRecords.records
+            : []
+        );
+
+    const sessionList = Array.isArray(storedSessions)
+      ? storedSessions
+      : (
+          isObject(storedSessions) &&
+          Array.isArray(storedSessions.sessions)
+            ? storedSessions.sessions
+            : []
+        );
+
+    records = recordList
+      .filter(isObject)
+      .map(function (record) {
+        try {
+          return normalizeRecord(record, record);
+        } catch (error) {
+          console.warn(
+            "[LearningManager] Skipped invalid record:",
+            error
+          );
+
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    sessions = sessionList
+      .filter(isObject)
+      .map(function (session) {
+        return {
+          id: cleanText(session.id, 150) ||
+            makeId("session"),
+
+          learningId: cleanText(
+            session.learningId,
+            150
+          ),
+
+          date:
+            normalizeDate(session.date) ||
+            nowISO(),
+
+          minutes: normalizeNumber(
+            session.minutes,
+            1,
+            1440
+          ),
+
+          lessonId: cleanText(session.lessonId, 150),
+
+          notes: cleanText(session.notes, 5000),
+
+          rating: normalizeNumber(
+            session.rating,
+            0,
+            5
+          ),
+
+          createdAt:
+            normalizeDate(session.createdAt) ||
+            nowISO()
+        };
+      })
+      .filter(function (session) {
+        return session.learningId;
+      });
+
+    initialized = true;
+
+    emit("initialized", {
+      recordsCount: records.length,
+      sessionsCount: sessions.length
+    });
+
+    return getAll();
+  }
+
+  /* ---------------------------------------------------------
+     CREATE / READ / UPDATE / DELETE
+  --------------------------------------------------------- */
+
+  function create(input) {
+    ensureInitialized();
+
+    if (!isObject(input)) {
+      throw new Error("بيانات مسار التعلم غير صالحة.");
+    }
+
+    const record = normalizeRecord(input, null);
+
+    if (
+      records.some(function (item) {
+        return item.id === record.id;
+      })
+    ) {
+      throw new Error("معرّف مسار التعلم مستخدم مسبقًا.");
+    }
+
+    records.unshift(record);
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      records.shift();
+      throw error;
+    }
+
+    emit("created", {
+      id: record.id,
+      title: record.title
+    });
+
+    return clone(record);
+  }
+
+  function getAll(filters) {
+    ensureInitialized();
+
+    const options = isObject(filters) ? filters : {};
+
+    let result = records.slice();
+
+    if (options.status) {
+      result = result.filter(function (record) {
+        return record.status === options.status;
+      });
+    }
+
+    if (options.category) {
+      const category = cleanText(
+        options.category,
+        100
+      ).toLowerCase();
+
+      result = result.filter(function (record) {
+        return record.category.toLowerCase() === category;
+      });
+    }
+
+    if (options.subject) {
+      const subject = cleanText(
+        options.subject,
+        150
+      ).toLowerCase();
+
+      result = result.filter(function (record) {
+        return record.subject.toLowerCase() === subject;
+      });
+    }
+
+    if (options.query) {
+      const query = cleanText(
+        options.query,
+        300
+      ).toLowerCase();
+
+      result = result.filter(function (record) {
+        const searchable = [
+          record.title,
+          record.description,
+          record.category,
+          record.subject,
+          record.notes,
+          record.skills.join(" "),
+          record.tags.join(" ")
+        ].join(" ").toLowerCase();
+
+        return searchable.includes(query);
+      });
+    }
+
+    if (options.tag) {
+      const tag = cleanText(options.tag, 100);
+
+      result = result.filter(function (record) {
+        return record.tags.includes(tag);
+      });
+    }
+
+    return clone(result);
+  }
+
+  function getById(id) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    return record ? clone(record) : null;
+  }
+
+  function update(id, changes) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    if (!isObject(changes)) {
+      throw new Error("التعديلات غير صالحة.");
+    }
+
+    const forbidden = [
+      "id",
+      "createdAt",
+      "updatedAt",
+      "totalMinutes",
+      "completedAt",
+      "lastStudiedAt"
+    ];
+
+    const safeChanges = {};
+
+    Object.keys(changes).forEach(function (key) {
+      if (!forbidden.includes(key)) {
+        safeChanges[key] = changes[key];
+      }
+    });
+
+    const index = records.findIndex(function (item) {
+      return item.id === record.id;
+    });
+
+    const previous = clone(record);
+
+    const updated = normalizeRecord(
+      Object.assign({}, record, safeChanges),
+      record
+    );
+
+    records[index] = updated;
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      records[index] = previous;
+      throw error;
+    }
+
+    emit("updated", {
+      id: updated.id
+    });
+
+    return clone(updated);
+  }
+
+  function remove(id) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      return false;
+    }
+
+    const previousRecords = records.slice();
+    const previousSessions = sessions.slice();
+
+    records = records.filter(function (item) {
+      return item.id !== record.id;
+    });
+
+    sessions = sessions.filter(function (session) {
+      return session.learningId !== record.id;
+    });
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      records = previousRecords;
+      sessions = previousSessions;
+      throw error;
+    }
+
+    emit("removed", {
+      id: record.id
+    });
+
+    return true;
+  }
+
+  /* ---------------------------------------------------------
+     STATUS AND PROGRESS
+  --------------------------------------------------------- */
+
+  function setStatus(id, status) {
+    ensureInitialized();
+
+    if (!VALID_STATUSES.includes(status)) {
+      throw new Error("حالة التعلم غير صالحة.");
+    }
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    const changes = {
+      status: status
+    };
+
+    if (
+      status === STATUS.IN_PROGRESS &&
+      !record.startedAt
+    ) {
+      changes.startedAt = nowISO();
+    }
+
+    if (status === STATUS.COMPLETED) {
+      changes.progress = 100;
+    } else if (record.status === STATUS.COMPLETED) {
+      changes.progress = Math.min(
+        record.progress,
+        99
+      );
+    }
+
+    const updated = update(id, changes);
+
+    emit("status-changed", {
+      id: id,
+      status: updated.status
+    });
+
+    return updated;
+  }
+
+  function markProgress(id, progress, lessonId) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    const value = normalizeNumber(progress, 0, 100);
+
+    let updated = update(id, {
+      progress: value,
+      status: value >= 100
+        ? STATUS.COMPLETED
+        : (
+            record.status === STATUS.PLANNED ||
+            record.status === STATUS.PAUSED
+              ? STATUS.IN_PROGRESS
+              : record.status
+          )
+    });
+
+    if (lessonId) {
+      const lesson = updated.lessons.find(function (item) {
+        return item.id === lessonId;
+      });
+
+      if (!lesson) {
+        throw new Error("الدرس غير موجود في هذا المسار.");
+      }
+
+      updated = update(id, {
+        lessons: updated.lessons.map(function (item) {
+          if (item.id !== lessonId) {
+            return item;
+          }
+
+          return Object.assign({}, item, {
+            progress: value,
+            completed: value >= 100,
+            completedAt: value >= 100
+              ? nowISO()
+              : null,
+            updatedAt: nowISO()
+          });
+        })
+      });
+    }
+
+    emit("progress-changed", {
+      id: id,
+      progress: updated.progress
+    });
+
+    return updated;
+  }
+
+  function complete(id) {
+    return setStatus(id, STATUS.COMPLETED);
+  }
+
+  /* ---------------------------------------------------------
+     LESSONS
+  --------------------------------------------------------- */
+
+  function addLesson(id, lessonInput) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    if (!isObject(lessonInput)) {
+      throw new Error("بيانات الدرس غير صالحة.");
+    }
+
+    const title = cleanText(lessonInput.title, 200);
+
+    if (!title) {
+      throw new Error("عنوان الدرس مطلوب.");
+    }
+
+    const lesson = {
+      id: makeId("lesson"),
+      title: title,
+      notes: cleanText(lessonInput.notes, 5000),
+      progress: 0,
+      completed: false,
+      completedAt: null,
+      updatedAt: nowISO()
+    };
+
+    const updated = update(id, {
+      lessons: record.lessons.concat([lesson])
+    });
+
+    emit("lesson-added", {
+      id: id,
+      lessonId: lesson.id
+    });
+
+    return clone({
+      record: updated,
+      lesson: lesson
+    });
+  }
+
+  function updateLesson(id, lessonId, changes) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    const lesson = record.lessons.find(function (item) {
+      return item.id === lessonId;
+    });
+
+    if (!lesson) {
+      throw new Error("الدرس غير موجود.");
+    }
+
+    if (!isObject(changes)) {
+      throw new Error("تعديلات الدرس غير صالحة.");
+    }
+
+    const safeLesson = Object.assign({}, lesson);
+
+    if (changes.title !== undefined) {
+      safeLesson.title = cleanText(changes.title, 200);
+
+      if (!safeLesson.title) {
+        throw new Error("عنوان الدرس مطلوب.");
+      }
+    }
+
+    if (changes.notes !== undefined) {
+      safeLesson.notes = cleanText(changes.notes, 5000);
+    }
+
+    if (changes.progress !== undefined) {
+      safeLesson.progress = normalizeNumber(
+        changes.progress,
+        0,
+        100
+      );
+    }
+
+    if (changes.completed !== undefined) {
+      safeLesson.completed = changes.completed === true;
+    }
+
+    safeLesson.completed =
+      safeLesson.completed ||
+      safeLesson.progress >= 100;
+
+    safeLesson.progress = safeLesson.completed
+      ? 100
+      : safeLesson.progress;
+
+    safeLesson.completedAt = safeLesson.completed
+      ? (
+          normalizeDate(safeLesson.completedAt) ||
+          nowISO()
+        )
+      : null;
+
+    safeLesson.updatedAt = nowISO();
+
+    const lessons = record.lessons.map(function (item) {
+      return item.id === lessonId
+        ? safeLesson
+        : item;
+    });
+
+    const updated = update(id, {
+      lessons: lessons
+    });
+
+    const totalLessons = updated.lessons.length;
+
+    if (totalLessons > 0) {
+      const average = updated.lessons.reduce(
+        function (sum, item) {
+          return sum + item.progress;
+        },
+        0
+      ) / totalLessons;
+
+      markProgress(id, average);
+    }
+
+    emit("lesson-updated", {
+      id: id,
+      lessonId: lessonId
+    });
+
+    return getById(id);
+  }
+
+  /* ---------------------------------------------------------
+     LEARNING RESOURCES
+  --------------------------------------------------------- */
+
+  function addResource(id, resourceInput) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    if (!isObject(resourceInput)) {
+      throw new Error("بيانات المصدر غير صالحة.");
+    }
+
+    const title = cleanText(resourceInput.title, 200);
+
+    if (!title) {
+      throw new Error("عنوان المصدر مطلوب.");
+    }
+
+    const resource = {
+      id: makeId("resource"),
+      title: title,
+      type: cleanText(resourceInput.type, 50) || "other",
+      url: cleanText(resourceInput.url, 2000),
+      notes: cleanText(resourceInput.notes, 2000),
+      completed: false,
+      createdAt: nowISO()
+    };
+
+    const updated = update(id, {
+      resources: record.resources.concat([resource])
+    });
+
+    emit("resource-added", {
+      id: id,
+      resourceId: resource.id
+    });
+
+    return clone({
+      record: updated,
+      resource: resource
+    });
+  }
+
+  function markResourceCompleted(id, resourceId, completed) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    const exists = record.resources.some(function (item) {
+      return item.id === resourceId;
+    });
+
+    if (!exists) {
+      throw new Error("المصدر غير موجود.");
+    }
+
+    return update(id, {
+      resources: record.resources.map(function (item) {
+        if (item.id !== resourceId) {
+          return item;
+        }
+
+        return Object.assign({}, item, {
+          completed: completed !== false
+        });
+      })
+    });
+  }
+
+  /* ---------------------------------------------------------
+     STUDY SESSIONS
+  --------------------------------------------------------- */
+
+  function addSession(id, sessionInput) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    const input = isObject(sessionInput)
+      ? sessionInput
+      : {};
+
+    const minutes = Number(input.minutes);
+
+    if (
+      !Number.isFinite(minutes) ||
+      minutes <= 0 ||
+      minutes > 1440
+    ) {
+      throw new Error(
+        "مدة جلسة التعلم يجب أن تكون بين دقيقة و1440 دقيقة."
+      );
+    }
+
+    const session = {
+      id: makeId("session"),
+      learningId: record.id,
+      date: normalizeDate(input.date) || nowISO(),
+      minutes: Math.round(minutes),
+      lessonId: cleanText(input.lessonId, 150),
+      notes: cleanText(input.notes, 5000),
+      rating: normalizeNumber(input.rating, 0, 5),
+      createdAt: nowISO()
+    };
+
+    if (
+      session.lessonId &&
+      !record.lessons.some(function (lesson) {
+        return lesson.id === session.lessonId;
+      })
+    ) {
+      throw new Error("الدرس المرتبط بالجلسة غير موجود.");
+    }
+
+    const previousSessions = sessions.slice();
+    const previousRecord = clone(record);
+
+    sessions.unshift(session);
+
+    const index = records.findIndex(function (item) {
+      return item.id === record.id;
+    });
+
+    records[index] = Object.assign({}, record, {
+      totalMinutes: record.totalMinutes + session.minutes,
+      lastStudiedAt: session.date,
+      status: record.status === STATUS.PLANNED ||
+        record.status === STATUS.PAUSED
+          ? STATUS.IN_PROGRESS
+          : record.status,
+      startedAt: record.startedAt || session.date,
+      updatedAt: nowISO()
+    });
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      sessions = previousSessions;
+      records[index] = previousRecord;
+      throw error;
+    }
+
+    emit("session-added", {
+      id: record.id,
+      sessionId: session.id,
+      minutes: session.minutes
+    });
+
+    return clone(session);
+  }
+
+  function getSessions(id, filters) {
+    ensureInitialized();
+
+    const normalizedId = requireId(id);
+    const options = isObject(filters) ? filters : {};
+
+    let result = sessions.filter(function (session) {
+      return session.learningId === normalizedId;
+    });
+
+    if (options.from) {
+      const from = normalizeDate(options.from);
+
+      if (from) {
+        result = result.filter(function (session) {
+          return session.date >= from;
+        });
+      }
+    }
+
+    if (options.to) {
+      const to = normalizeDate(options.to);
+
+      if (to) {
+        result = result.filter(function (session) {
+          return session.date <= to;
+        });
+      }
+    }
+
+    return clone(result);
+  }
+
+  function removeSession(sessionId) {
+    ensureInitialized();
+
+    const normalizedId = requireId(sessionId);
+
+    const session = sessions.find(function (item) {
+      return item.id === normalizedId;
+    });
+
+    if (!session) {
+      return false;
+    }
+
+    const record = findRecord(session.learningId);
+
+    const previousSessions = sessions.slice();
+    const previousRecords = records.slice();
+
+    sessions = sessions.filter(function (item) {
+      return item.id !== normalizedId;
+    });
+
+    if (record) {
+      const index = records.findIndex(function (item) {
+        return item.id === record.id;
+      });
+
+      records[index] = Object.assign({}, record, {
+        totalMinutes: Math.max(
+          0,
+          record.totalMinutes - session.minutes
+        ),
+        updatedAt: nowISO()
+      });
+    }
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      sessions = previousSessions;
+      records = previousRecords;
+      throw error;
+    }
+
+    emit("session-removed", {
+      sessionId: normalizedId,
+      learningId: session.learningId
+    });
+
+    return true;
+  }
+
+  /* ---------------------------------------------------------
+     REVIEWS
+  --------------------------------------------------------- */
+
+  function addReview(id, reviewInput) {
+    ensureInitialized();
+
+    const record = findRecord(id);
+
+    if (!record) {
+      throw new Error("مسار التعلم غير موجود.");
+    }
+
+    if (!isObject(reviewInput)) {
+      throw new Error("بيانات المراجعة غير صالحة.");
+    }
+
+    const text = cleanText(reviewInput.text, 5000);
+
+    if (!text) {
+      throw new Error("اكتب ملاحظة المراجعة أولًا.");
+    }
+
+    const review = {
+      id: makeId("review"),
+      text: text,
+      rating: normalizeNumber(reviewInput.rating, 0, 5),
+      createdAt: nowISO()
+    };
+
+    const updated = update(id, {
+      reviewNotes: record.reviewNotes.concat([review])
+    });
+
+    emit("review-added", {
+      id: id,
+      reviewId: review.id
+    });
+
+    return clone({
+      record: updated,
+      review: review
+    });
+  }
+
+  /* ---------------------------------------------------------
+     SUMMARY AND ANALYTICS
+  --------------------------------------------------------- */
+
+  function getSummary() {
+    ensureInitialized();
+
+    const summary = {
+      totalPaths: records.length,
+      planned: 0,
+      inProgress: 0,
+      completed: 0,
+      paused: 0,
+      archived: 0,
+      totalMinutes: 0,
+      totalHours: 0,
+      totalSessions: sessions.length,
+      totalLessons: 0,
+      completedLessons: 0,
+      totalResources: 0,
+      completedResources: 0,
+      averageProgress: 0,
+      activePaths: 0
+    };
+
+    let progressSum = 0;
+
+    records.forEach(function (record) {
+      if (Object.prototype.hasOwnProperty.call(
+        summary,
+        record.status
+      )) {
+        summary[record.status] += 1;
+      }
+
+      summary.totalMinutes += record.totalMinutes;
+      summary.totalLessons += record.lessons.length;
+      summary.totalResources += record.resources.length;
+
+      summary.completedLessons += record.lessons.filter(
+        function (lesson) {
+          return lesson.completed;
+        }
+      ).length;
+
+      summary.completedResources += record.resources.filter(
+        function (resource) {
+          return resource.completed;
+        }
+      ).length;
+
+      progressSum += record.progress;
+
+      if (record.status === STATUS.IN_PROGRESS) {
+        summary.activePaths += 1;
+      }
+    });
+
+    summary.totalHours = Math.round(
+      summary.totalMinutes / 60 * 100
+    ) / 100;
+
+    summary.averageProgress = records.length
+      ? Math.round(progressSum / records.length)
+      : 0;
+
+    return clone(summary);
+  }
+
+  function getRecentSessions(limit) {
+    ensureInitialized();
+
+    const count = normalizeNumber(
+      limit === undefined ? 10 : limit,
+      1,
+      100
+    );
+
+    return clone(
+      sessions
+        .slice()
+        .sort(function (a, b) {
+          return b.date.localeCompare(a.date);
+        })
+        .slice(0, count)
+        .map(function (session) {
+          const record = findRecord(session.learningId);
+
+          return Object.assign({}, session, {
+            learningTitle: record
+              ? record.title
+              : "مسار محذوف"
+          });
+        })
+    );
+  }
+
+  /* ---------------------------------------------------------
+     EXPORT / RESET
+  --------------------------------------------------------- */
+
+  function exportData() {
+    ensureInitialized();
+
+    return {
+      version: VERSION,
+      exportedAt: nowISO(),
+      records: clone(records),
+      sessions: clone(sessions)
+    };
+  }
+
+  function importData(data, options) {
+    ensureInitialized();
+
+    if (
+      !isObject(data) ||
+      !Array.isArray(data.records) ||
+      !Array.isArray(data.sessions)
+    ) {
+      throw new Error("ملف بيانات التعلم غير صالح.");
+    }
+
+    const settings = isObject(options) ? options : {};
+    const replace = settings.replace === true;
+
+    const importedRecords = data.records.map(function (item) {
+      if (!isObject(item)) {
+        throw new Error("يحتوي الملف على سجل غير صالح.");
+      }
+
+      return normalizeRecord(item, item);
+    });
+
+    const importedSessions = data.sessions.map(function (item) {
+      if (!isObject(item)) {
+        throw new Error("تحتوي البيانات على جلسة غير صالحة.");
+      }
+
+      return {
+        id: cleanText(item.id, 150) || makeId("session"),
+        learningId: requireId(item.learningId),
+        date: normalizeDate(item.date) || nowISO(),
+        minutes: normalizeNumber(item.minutes, 1, 1440),
+        lessonId: cleanText(item.lessonId, 150),
+        notes: cleanText(item.notes, 5000),
+        rating: normalizeNumber(item.rating, 0, 5),
+        createdAt: normalizeDate(item.createdAt) || nowISO()
+      };
+    });
+
+    const nextRecords = replace
+      ? importedRecords
+      : records.concat(importedRecords);
+
+    const nextSessions = replace
+      ? importedSessions
+      : sessions.concat(importedSessions);
+
+    const ids = new Set();
+
+    nextRecords.forEach(function (record) {
+      if (ids.has(record.id)) {
+        throw new Error(
+          "توجد معرّفات مكررة في مسارات التعلم."
+        );
+      }
+
+      ids.add(record.id);
+    });
+
+    nextSessions.forEach(function (session) {
+      if (!ids.has(session.learningId)) {
+        throw new Error(
+          "توجد جلسة مرتبطة بمسار غير موجود."
+        );
+      }
+    });
+
+    const oldRecords = records;
+    const oldSessions = sessions;
+
+    records = nextRecords;
+    sessions = nextSessions;
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      records = oldRecords;
+      sessions = oldSessions;
+      throw error;
+    }
+
+    emit("imported", {
+      recordsCount: importedRecords.length,
+      sessionsCount: importedSessions.length
+    });
+
+    return getSummary();
+  }
+
+  function reset() {
+    ensureInitialized();
+
+    const oldRecords = records;
+    const oldSessions = sessions;
+
+    records = [];
+    sessions = [];
+
+    try {
+      saveOrThrow();
+    } catch (error) {
+      records = oldRecords;
+      sessions = oldSessions;
+      throw error;
+    }
+
+    emit("reset", {});
+
+    return true;
+  }
+
+  /* ---------------------------------------------------------
+     PUBLIC API
+  --------------------------------------------------------- */
+
+  const LearningManager = {
+    version: VERSION,
+
+    STATUS: STATUS,
+
+    initialize: initialize,
+
+    create: create,
+    getAll: getAll,
+    getById: getById,
+    update: update,
+    remove: remove,
+
+    setStatus: setStatus,
+    markProgress: markProgress,
+    complete: complete,
+
+    addLesson: addLesson,
+    updateLesson: updateLesson,
+
+    addResource: addResource,
+    markResourceCompleted: markResourceCompleted,
+
+    addSession: addSession,
+    getSessions: getSessions,
+    removeSession: removeSession,
+
+    addReview: addReview,
+
+    getSummary: getSummary,
+    getRecentSessions: getRecentSessions,
+
+    exportData: exportData,
+    importData: importData,
+    reset: reset
+  };
+
+  window.LearningManager = LearningManager;
+
+})(window);
+
+ما الذي يوفره الملف؟
+
+- إنشاء مسارات تعلم وتعديلها والبحث فيها وتصنيفها.
+- تنظيم الدروس والمصادر والمهارات والأهداف.
+- تسجيل جلسات الدراسة وحساب الدقائق والساعات.
+- متابعة التقدم والحالات الخمس: مخطط، جارٍ، مكتمل، متوقف مؤقتًا، مؤرشف.
+- إضافة مراجعات وملاحظات وملخصات إحصائية.
+- تصدير البيانات واستيرادها وإعادة ضبط بيانات وحدة التعلم.
+
+ملاحظة تقنية: هذا الملف لم يُختبر تكامليًا بعد. سنراجع لاحقًا توافق واجهة التخزين والأحداث مع الملفات الفعلية في المشروع، ونتحقق من سلوك الحفظ والتحديث قبل اعتبار الوحدة جاهزة.
+
+بعد استبدال "learning.js" وحفظه، اكتب تم لننتقل إلى الملف التالي: "finance.js".
