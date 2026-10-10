@@ -1,246 +1,908 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#101827">
-  <title>القمة | MY LIFE OS</title>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover"
+    >
+    <meta name="theme-color" content="#101827">
+    <meta
+        name="description"
+        content="مشروع القمة MY LIFE OS — نظام شخصي لتنظيم الحياة والأهداف والمهام والتقدم."
+    >
+    <meta name="color-scheme" content="dark">
 
-  <style>
-    :root {
-      --bg: #101827;
-      --panel: #192538;
-      --gold: #e5bd67;
-      --text: #f4f5f7;
-      --muted: #aab5c5;
-      --border: #2b3a50;
-    }
+    <title>القمة | MY LIFE OS</title>
 
-    * {
-      box-sizing: border-box;
-    }
+    <link rel="stylesheet" href="Style.css">
 
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: Arial, sans-serif;
-      line-height: 1.7;
-    }
+    <!--
+        ترتيب تحميل الملفات مهم:
+        1. الخدمات الأساسية.
+        2. نقطة تشغيل التطبيق.
+        3. بيانات التطبيق.
+        4. وحدات الوظائف.
+        5. النسخ الاحتياطي والبحث والتحليلات.
+    -->
 
-    .container {
-      width: min(100% - 28px, 900px);
-      margin: auto;
-      padding: 24px 0 40px;
-    }
+    <script src="Storage.js" defer></script>
+    <script src="Data.js" defer></script>
+    <script src="Script.js" defer></script>
+    <script src="App.js" defer></script>
 
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 28px;
-    }
+    <script src="Appearance.js" defer></script>
+    <script src="Settings.js" defer></script>
+    <script src="Life-domain.js" defer></script>
 
-    .brand {
-      color: var(--gold);
-      font-size: 23px;
-      font-weight: bold;
-    }
+    <script src="goals.js" defer></script>
+    <script src="Tasks.js" defer></script>
+    <script src="schedule.js" defer></script>
+    <script src="habits.js" defer></script>
+    <script src="Plan90.js" defer></script>
+    <script src="reviews.js" defer></script>
 
-    .subtitle {
-      color: var(--muted);
-      font-size: 12px;
-    }
+    <script src="Notes.js" defer></script>
+    <script src="Memo.js" defer></script>
+    <script src="Affirmation.js" defer></script>
 
-    .date {
-      color: var(--muted);
-      font-size: 12px;
-    }
+    <script src="health.js" defer></script>
+    <script src="Sport.js" defer></script>
+    <script src="relationships.js" defer></script>
+    <script src="learning.js" defer></script>
+    <script src="Career.js" defer></script>
 
-    .welcome {
-      padding: 22px;
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      background: linear-gradient(135deg, #1c2b40, #172131);
-      margin-bottom: 20px;
-    }
+    <script src="finance.js" defer></script>
+    <script src="digital-life.js" defer></script>
 
-    .welcome h1 {
-      font-size: 25px;
-      margin: 0 0 8px;
-    }
-
-    .welcome h1 span {
-      color: var(--gold);
-    }
-
-    .welcome p {
-      color: var(--muted);
-      margin: 0;
-    }
-
-    .section-title {
-      font-size: 18px;
-      margin: 26px 0 12px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px;
-      min-width: 0;
-    }
-
-    .card .icon {
-      font-size: 24px;
-    }
-
-    .card h3 {
-      font-size: 15px;
-      margin: 8px 0 4px;
-    }
-
-    .card p {
-      color: var(--muted);
-      font-size: 13px;
-      margin: 0;
-    }
-
-    .focus {
-      border-right: 3px solid var(--gold);
-    }
-
-    .focus strong {
-      color: var(--gold);
-    }
-
-    .progress-track {
-      height: 7px;
-      background: #303d50;
-      border-radius: 10px;
-      margin-top: 12px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: var(--gold);
-    }
-
-    footer {
-      margin-top: 30px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    @media (max-width: 420px) {
-      .brand {
-        font-size: 19px;
-      }
-
-      .welcome h1 {
-        font-size: 22px;
-      }
-
-      .grid {
-        gap: 9px;
-      }
-
-      .card {
-        padding: 12px;
-      }
-    }
-  </style>
+    <script src="Notification.js" defer></script>
+    <script src="Search.js" defer></script>
+    <script src="Analytics.js" defer></script>
+    <script src="backup.js" defer></script>
 </head>
 
 <body>
-  <main class="container">
-    <header>
-      <div>
-        <div class="brand">▲ القمة</div>
-        <div class="subtitle">MY LIFE OS · نظام إدارة حياتي</div>
-      </div>
-      <div class="date">الإصدار الأول</div>
-    </header>
+    <a class="skip-link" href="#main-content">
+        الانتقال إلى المحتوى الرئيسي
+    </a>
 
-    <section class="welcome">
-      <h1>حياتك، أهدافك، <span>مسارك.</span></h1>
-      <p>
-        نظّم يومك، طوّر نفسك، وراجع تقدمك
-        حتى تقترب من الحياة التي تريدها.
-      </p>
-    </section>
+    <div id="app" class="app-shell">
 
-    <h2 class="section-title">مركز القيادة</h2>
+        <!-- رأس التطبيق -->
+        <header class="app-header" id="app-header">
+            <div class="app-brand">
+                <a
+                    class="app-brand__link"
+                    href="#dashboard"
+                    data-page="dashboard"
+                    aria-label="العودة إلى الصفحة الرئيسية"
+                >
+                    <span class="app-brand__symbol" aria-hidden="true">▲</span>
 
-    <section class="grid">
-      <article class="card focus">
-        <div class="icon">🎯</div>
-        <h3>تركيز اليوم</h3>
-        <p>الالتزام بالخطة اليومية.</p>
-      </article>
+                    <span class="app-brand__text">
+                        <strong>القمة</strong>
+                        <span>MY LIFE OS</span>
+                    </span>
+                </a>
+            </div>
 
-      <article class="card">
-        <div class="icon">📋</div>
-        <h3>مهام اليوم</h3>
-        <p>نظّم أعمالك وأولوياتك.</p>
-      </article>
+            <div class="app-header__actions">
+                <button
+                    class="icon-button"
+                    type="button"
+                    id="search-open-button"
+                    aria-label="فتح البحث"
+                    aria-controls="global-search-panel"
+                >
+                    <span aria-hidden="true">⌕</span>
+                </button>
 
-      <article class="card">
-        <div class="icon">🚀</div>
-        <h3>أهدافي</h3>
-        <p>حوّل طموحاتك إلى خطوات.</p>
-      </article>
+                <button
+                    class="icon-button"
+                    type="button"
+                    id="notifications-open-button"
+                    aria-label="فتح التذكيرات"
+                    aria-controls="notifications-panel"
+                >
+                    <span aria-hidden="true">♧</span>
+                </button>
 
-      <article class="card">
-        <div class="icon">📊</div>
-        <h3>تقييمي</h3>
-        <p>راجع تقدمك وحدد ما يحتاج إلى تحسين.</p>
-      </article>
+                <a
+                    class="icon-button"
+                    href="#settings"
+                    data-page="settings"
+                    aria-label="الإعدادات"
+                >
+                    <span aria-hidden="true">⚙</span>
+                </a>
+            </div>
+        </header>
 
-      <article class="card">
-        <div class="icon">🎓</div>
-        <h3>مساري المهني</h3>
-        <p>ابنِ سيرتك الذاتية ومهاراتك.</p>
-      </article>
+        <!-- معلومات اليوم -->
+        <section
+            class="daily-overview"
+            id="daily-overview"
+            aria-labelledby="daily-overview-title"
+        >
+            <div class="daily-overview__heading">
+                <div>
+                    <p class="eyebrow">مساحتك الشخصية</p>
+                    <h1 id="daily-overview-title">
+                        مرحبًا بك في مشروع القمة
+                    </h1>
+                    <p id="today-date" class="muted-text">
+                        استعد ليوم جديد بخطوات واضحة.
+                    </p>
+                </div>
 
-      <article class="card">
-        <div class="icon">🗓️</div>
-        <h3>خطة 90 يومًا</h3>
-        <p>خطوات صغيرة نحو تغيير مستمر.</p>
-      </article>
-    </section>
+                <div
+                    class="daily-overview__status"
+                    id="app-status"
+                    role="status"
+                    aria-live="polite"
+                >
+                    جاهز للتنظيم
+                </div>
+            </div>
 
-    <h2 class="section-title">هدفي الأكبر</h2>
+            <div class="daily-overview__message">
+                <p>
+                    خطّط بوعي، نفّذ بخطوات صغيرة، وراجع تقدمك باستمرار.
+                </p>
+            </div>
+        </section>
 
-    <section class="card">
-      <h3>بناء سيرة ذاتية ممتازة</h3>
-      <p>
-        تطوير التعليم والمهارات والشهادات
-        والتجارب العملية خطوة بخطوة.
-      </p>
-      <div class="progress-track">
-        <div class="progress-fill"></div>
-      </div>
-      <p style="margin-top: 8px;">سيُحدَّد التقدم بعد إضافة بياناتك.</p>
-    </section>
+        <!-- البحث العام -->
+        <section
+            class="global-search-panel"
+            id="global-search-panel"
+            aria-label="البحث في النظام"
+            hidden
+        >
+            <form id="global-search-form" role="search">
+                <label for="global-search-input">
+                    ابحث في أهدافك ومهامك وملاحظاتك
+                </label>
 
-    <footer>
-      مشروع القمة — MY LIFE OS
-      <br>
-      خطّط بوعي، التزم، وراجع مسارك.
-    </footer>
-  </main>
+                <div class="search-field">
+                    <input
+                        id="global-search-input"
+                        name="query"
+                        type="search"
+                        placeholder="اكتب ما تريد البحث عنه..."
+                        autocomplete="off"
+                    >
+
+                    <button type="submit">
+                        بحث
+                    </button>
+                </div>
+            </form>
+
+            <div
+                id="global-search-results"
+                class="search-results"
+                aria-live="polite"
+            ></div>
+        </section>
+
+        <!-- التنبيهات -->
+        <section
+            class="notifications-panel"
+            id="notifications-panel"
+            aria-label="التذكيرات والإشعارات"
+            hidden
+        >
+            <div class="section-heading">
+                <h2>التذكيرات</h2>
+
+                <button
+                    type="button"
+                    class="text-button"
+                    data-panel-close="notifications-panel"
+                >
+                    إغلاق
+                </button>
+            </div>
+
+            <div id="notifications-list">
+                <p class="muted-text">
+                    ستظهر التذكيرات هنا عندما يتم ربط وحدة الإشعارات.
+                </p>
+            </div>
+        </section>
+
+        <!-- التنقل الرئيسي -->
+        <nav
+            class="primary-navigation"
+            id="primary-navigation"
+            aria-label="التنقل الرئيسي"
+        >
+            <a
+                href="#dashboard"
+                data-page="dashboard"
+                aria-current="page"
+            >
+                <span aria-hidden="true">⌂</span>
+                <span>الرئيسية</span>
+            </a>
+
+            <a href="#goals" data-page="goals">
+                <span aria-hidden="true">◎</span>
+                <span>الأهداف</span>
+            </a>
+
+            <a href="#tasks" data-page="tasks">
+                <span aria-hidden="true">☑</span>
+                <span>المهام</span>
+            </a>
+
+            <a href="#planning" data-page="planning">
+                <span aria-hidden="true">▦</span>
+                <span>التخطيط</span>
+            </a>
+
+            <a href="#life" data-page="life">
+                <span aria-hidden="true">◇</span>
+                <span>حياتي</span>
+            </a>
+        </nav>
+
+        <!-- المحتوى الرئيسي -->
+        <main id="main-content" class="main-content">
+
+            <!-- لوحة القيادة -->
+            <section
+                id="page-dashboard"
+                class="page-section"
+                data-page-section="dashboard"
+                aria-labelledby="dashboard-title"
+            >
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">نظرة عامة</p>
+                        <h2 id="dashboard-title">مركز القيادة</h2>
+                    </div>
+
+                    <span class="section-caption">
+                        حياتك في مكان واحد
+                    </span>
+                </div>
+
+                <div class="dashboard-stats" id="dashboard-stats">
+                    <article class="stat-card">
+                        <span class="stat-card__label">الأهداف النشطة</span>
+                        <strong id="stat-active-goals">—</strong>
+                        <span class="stat-card__hint">
+                            الأهداف التي تعمل عليها
+                        </span>
+                    </article>
+
+                    <article class="stat-card">
+                        <span class="stat-card__label">مهام اليوم</span>
+                        <strong id="stat-today-tasks">—</strong>
+                        <span class="stat-card__hint">
+                            ما تحتاج إلى إنجازه
+                        </span>
+                    </article>
+
+                    <article class="stat-card">
+                        <span class="stat-card__label">العادات</span>
+                        <strong id="stat-habits">—</strong>
+                        <span class="stat-card__hint">
+                            عاداتك المسجلة
+                        </span>
+                    </article>
+
+                    <article class="stat-card">
+                        <span class="stat-card__label">التقدم العام</span>
+                        <strong id="stat-overall-progress">—</strong>
+                        <span class="stat-card__hint">
+                            يظهر بعد توفر بيانات التقدم
+                        </span>
+                    </article>
+                </div>
+
+                <section class="content-panel" aria-labelledby="focus-title">
+                    <div class="section-heading">
+                        <h3 id="focus-title">تركيز اليوم</h3>
+
+                        <a href="#tasks" data-page="tasks">
+                            عرض المهام
+                        </a>
+                    </div>
+
+                    <div id="today-focus-content">
+                        <p class="muted-text">
+                            ستظهر هنا أولويات اليوم بعد ربط وحدة المهام والجدول.
+                        </p>
+                    </div>
+                </section>
+
+                <section
+                    class="content-panel"
+                    aria-labelledby="main-goal-title"
+                >
+                    <div class="section-heading">
+                        <h3 id="main-goal-title">الهدف الأكبر</h3>
+
+                        <a href="#goals" data-page="goals">
+                            إدارة الأهداف
+                        </a>
+                    </div>
+
+                    <div id="main-goal-content">
+                        <p class="muted-text">
+                            أضف أهدافك لتظهر هنا مع مستوى التقدم.
+                        </p>
+                    </div>
+                </section>
+
+                <section class="content-panel" aria-labelledby="quick-actions-title">
+                    <div class="section-heading">
+                        <h3 id="quick-actions-title">الوصول السريع</h3>
+                    </div>
+
+                    <div class="quick-actions">
+                        <button
+                            type="button"
+                            data-action="create-goal"
+                        >
+                            <span aria-hidden="true">🎯</span>
+                            <span>هدف جديد</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            data-action="create-task"
+                        >
+                            <span aria-hidden="true">✓</span>
+                            <span>مهمة جديدة</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            data-action="create-note"
+                        >
+                            <span aria-hidden="true">✎</span>
+                            <span>ملاحظة جديدة</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            data-action="review-progress"
+                        >
+                            <span aria-hidden="true">↗</span>
+                            <span>مراجعة التقدم</span>
+                        </button>
+                    </div>
+                </section>
+            </section>
+
+            <!-- الأهداف -->
+            <section
+                id="page-goals"
+                class="page-section"
+                data-page-section="goals"
+                aria-labelledby="goals-title"
+                hidden
+            >
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">الرؤية والنتائج</p>
+                        <h2 id="goals-title">أهدافي</h2>
+                    </div>
+                </div>
+
+                <section class="content-panel">
+                    <div id="goals-toolbar" class="panel-toolbar">
+                        <p class="muted-text">
+                            حوّل طموحاتك إلى نتائج واضحة وخطوات قابلة للقياس.
+                        </p>
+
+                        <button
+                            type="button"
+                            data-action="create-goal"
+                        >
+                            إضافة هدف
+                        </button>
+                    </div>
+
+                    <div id="goals-list" aria-live="polite">
+                        <p class="muted-text">
+                            ستظهر أهدافك هنا بعد ربط مدير الأهداف.
+                        </p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- المهام -->
+            <section
+                id="page-tasks"
+                class="page-section"
+                data-page-section="tasks"
+                aria-labelledby="tasks-title"
+                hidden
+            >
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">التنفيذ اليومي</p>
+                        <h2 id="tasks-title">مهامي</h2>
+                    </div>
+                </div>
+
+                <section class="content-panel">
+                    <div class="panel-toolbar">
+                        <p class="muted-text">
+                            اجعل أهدافك خطوات صغيرة يمكن تنفيذها.
+                        </p>
+
+                        <button
+                            type="button"
+                            data-action="create-task"
+                        >
+                            إضافة مهمة
+                        </button>
+                    </div>
+
+                    <div id="tasks-list" aria-live="polite">
+                        <p class="muted-text">
+                            ستظهر مهامك هنا بعد ربط مدير المهام.
+                        </p>
+                    </div>
+                </section>
+            </section>
+
+            <!-- التخطيط -->
+            <section
+                id="page-planning"
+                class="page-section"
+                data-page-section="planning"
+                aria-labelledby="planning-title"
+                hidden
+            >
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">إدارة الوقت</p>
+                        <h2 id="planning-title">التخطيط</h2>
+                    </div>
+                </div>
+
+                <div class="feature-grid">
+                    <article class="content-panel">
+                        <h3>الجدول</h3>
+                        <p class="muted-text">
+                            نظّم وقتك ومواعيدك اليومية.
+                        </p>
+                        <a href="#schedule" data-page="schedule">
+                            فتح الجدول
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>خطة 90 يومًا</h3>
+                        <p class="muted-text">
+                            قسّم التغيير الكبير إلى مراحل.
+                        </p>
+                        <a href="#plan90" data-page="plan90">
+                            فتح الخطة
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>العادات</h3>
+                        <p class="muted-text">
+                            تابع السلوكيات التي تريد تثبيتها.
+                        </p>
+                        <a href="#habits" data-page="habits">
+                            متابعة العادات
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>المراجعات</h3>
+                        <p class="muted-text">
+                            قيّم ما أنجزته وما يحتاج إلى تعديل.
+                        </p>
+                        <a href="#reviews" data-page="reviews">
+                            مراجعة التقدم
+                        </a>
+                    </article>
+                </div>
+            </section>
+
+            <!-- مجالات الحياة -->
+            <section
+                id="page-life"
+                class="page-section"
+                data-page-section="life"
+                aria-labelledby="life-title"
+                hidden
+            >
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">التوازن والتطور</p>
+                        <h2 id="life-title">مجالات حياتي</h2>
+                    </div>
+                </div>
+
+                <div class="feature-grid">
+                    <article class="content-panel">
+                        <h3>الصحة</h3>
+                        <p class="muted-text">
+                            متابعة أهداف الصحة والعافية.
+                        </p>
+                        <a href="#health" data-page="health">
+                            فتح الصحة
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>الرياضة</h3>
+                        <p class="muted-text">
+                            تسجيل الأنشطة والتقدم الرياضي.
+                        </p>
+                        <a href="#sport" data-page="sport">
+                            فتح الرياضة
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>التعلم</h3>
+                        <p class="muted-text">
+                            تنظيم الدراسة والمهارات.
+                        </p>
+                        <a href="#learning" data-page="learning">
+                            فتح التعلم
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>المسار المهني</h3>
+                        <p class="muted-text">
+                            متابعة الشهادات والخبرات والسيرة الذاتية.
+                        </p>
+                        <a href="#career" data-page="career">
+                            فتح المسار المهني
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>المالية</h3>
+                        <p class="muted-text">
+                            متابعة الموارد والنفقات والأهداف المالية.
+                        </p>
+                        <a href="#finance" data-page="finance">
+                            فتح المالية
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>العلاقات</h3>
+                        <p class="muted-text">
+                            الاهتمام بالعلاقات الاجتماعية والأسرية.
+                        </p>
+                        <a href="#relationships" data-page="relationships">
+                            فتح العلاقات
+                        </a>
+                    </article>
+
+                    <article class="content-panel">
+                        <h3>الحياة الرقمية</h3>
+                        <p class="muted-text">
+                            تنظيم استخدام الأجهزة والإنترنت.
+                        </p>
+                        <a href="#digital-life" data-page="digital-life">
+                            فتح الحياة الرقمية
+                        </a>
+                    </article>
+                </div>
+            </section>
+
+            <!-- صفحات إضافية -->
+            <section
+                id="page-schedule"
+                class="page-section"
+                data-page-section="schedule"
+                hidden
+            >
+                <h2>الجدول</h2>
+                <div id="schedule-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة الجدول اليومي والأسبوعي.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-plan90"
+                class="page-section"
+                data-page-section="plan90"
+                hidden
+            >
+                <h2>خطة 90 يومًا</h2>
+                <div id="plan90-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة مراحل خطة التسعين يومًا.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-habits"
+                class="page-section"
+                data-page-section="habits"
+                hidden
+            >
+                <h2>العادات</h2>
+                <div id="habits-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة متابعة العادات.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-reviews"
+                class="page-section"
+                data-page-section="reviews"
+                hidden
+            >
+                <h2>المراجعات</h2>
+                <div id="reviews-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة مراجعة الأداء والتقدم.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-health"
+                class="page-section"
+                data-page-section="health"
+                hidden
+            >
+                <h2>الصحة</h2>
+                <div id="health-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة متابعة الصحة.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-sport"
+                class="page-section"
+                data-page-section="sport"
+                hidden
+            >
+                <h2>الرياضة</h2>
+                <div id="sport-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة تسجيل الأنشطة الرياضية.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-learning"
+                class="page-section"
+                data-page-section="learning"
+                hidden
+            >
+                <h2>التعلم</h2>
+                <div id="learning-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة تنظيم التعلم.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-career"
+                class="page-section"
+                data-page-section="career"
+                hidden
+            >
+                <h2>المسار المهني</h2>
+                <div id="career-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة إدارة الشهادات والخبرات والسيرة الذاتية.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-finance"
+                class="page-section"
+                data-page-section="finance"
+                hidden
+            >
+                <h2>المالية</h2>
+                <div id="finance-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة تنظيم الموارد والنفقات.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-relationships"
+                class="page-section"
+                data-page-section="relationships"
+                hidden
+            >
+                <h2>العلاقات</h2>
+                <div id="relationships-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة متابعة العلاقات.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="page-digital-life"
+                class="page-section"
+                data-page-section="digital-life"
+                hidden
+            >
+                <h2>الحياة الرقمية</h2>
+                <div id="digital-life-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة تنظيم الحياة الرقمية.
+                    </p>
+                </div>
+            </section>
+
+            <!-- الملاحظات والمذكرات -->
+            <section
+                id="page-notes"
+                class="page-section"
+                data-page-section="notes"
+                hidden
+            >
+                <h2>الملاحظات</h2>
+                <div id="notes-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة حفظ الأفكار والملاحظات اليومية.
+                    </p>
+                    <button type="button" data-action="create-note">
+                        ملاحظة جديدة
+                    </button>
+                </div>
+            </section>
+
+            <section
+                id="page-memo"
+                class="page-section"
+                data-page-section="memo"
+                hidden
+            >
+                <h2>المذكرات</h2>
+                <div id="memo-content" class="content-panel">
+                    <p class="muted-text">
+                        مساحة تسجيل المذكرات الشخصية.
+                    </p>
+                </div>
+            </section>
+
+            <!-- التقييم والتحليل -->
+            <section
+                id="page-analytics"
+                class="page-section"
+                data-page-section="analytics"
+                hidden
+            >
+                <h2>تحليل التقدم</h2>
+                <div id="analytics-content" class="content-panel">
+                    <p class="muted-text">
+                        ستظهر المؤشرات بعد ربط البيانات بوحدة التحليلات.
+                    </p>
+                </div>
+            </section>
+
+            <!-- الإعدادات -->
+            <section
+                id="page-settings"
+                class="page-section"
+                data-page-section="settings"
+                hidden
+            >
+                <h2>الإعدادات</h2>
+                <div id="settings-content" class="content-panel">
+                    <p class="muted-text">
+                        إعدادات اللغة والمظهر والتفضيلات والبيانات.
+                    </p>
+                </div>
+            </section>
+
+            <!-- مساحة عرض نتائج البحث -->
+            <section
+                id="page-search"
+                class="page-section"
+                data-page-section="search"
+                hidden
+            >
+                <h2>نتائج البحث</h2>
+                <div id="search-page-results" class="content-panel">
+                    <p class="muted-text">
+                        ابحث للوصول إلى أهدافك ومهامك وملاحظاتك.
+                    </p>
+                </div>
+            </section>
+
+            <!-- مساحة موحدة لعرض النص وتحليله لاحقًا -->
+            <section
+                id="page-text-workspace"
+                class="page-section"
+                data-page-section="text-workspace"
+                hidden
+            >
+                <h2>مساحة تنظيم الأفكار</h2>
+
+                <div class="content-panel">
+                    <p class="muted-text">
+                        ستتيح هذه المساحة إدخال نصك الأصلي،
+                        وتقسيمه إلى فقرات مرتبة، ومراجعة كل فقرة
+                        وتعديلها، ثم اعتماد ما تريد تحويله إلى هدف
+                        أو مهمة. سيُنفذ ذلك دون حذف النص الأصلي.
+                    </p>
+
+                    <label for="source-text-input">
+                        النص الأصلي
+                    </label>
+
+                    <textarea
+                        id="source-text-input"
+                        name="sourceText"
+                        rows="8"
+                        placeholder="اكتب أو الصق النص هنا..."
+                    ></textarea>
+
+                    <div class="panel-toolbar">
+                        <button
+                            type="button"
+                            data-action="organize-text"
+                        >
+                            تنظيم النص
+                        </button>
+                    </div>
+
+                    <div
+                        id="organized-text-results"
+                        aria-live="polite"
+                    ></div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- رسائل النظام -->
+        <div
+            id="app-message-region"
+            class="app-message-region"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+        ></div>
+
+        <!-- تذييل التطبيق -->
+        <footer class="app-footer">
+            <p>
+                <strong>القمة — MY LIFE OS</strong>
+            </p>
+            <p>
+                خطّط بوعي، التزم، وراجع مسارك.
+            </p>
+            <p id="app-version">الإصدار 1.0.0</p>
+        </footer>
+
+    </div>
+
+    <noscript>
+        <p>
+            يحتاج MY LIFE OS إلى تفعيل JavaScript حتى تعمل وظائف التطبيق.
+        </p>
+    </noscript>
 </body>
 </html>
