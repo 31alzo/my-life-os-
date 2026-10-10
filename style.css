@@ -1,0 +1,171 @@
+
+:root {
+  --bg: #101827;
+  --panel: #192538;
+  --gold: #e5bd67;
+  --text: #f4f5f7;
+  --muted: #aab5c5;
+  --border: #2b3a50;
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, sans-serif;
+  line-height: 1.7;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.container {
+  width: min(100% - 28px, 900px);
+  margin-inline: auto;
+  padding: 24px 0 40px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.brand {
+  color: var(--gold);
+  font-size: 23px;
+  font-weight: bold;
+}
+
+.subtitle,
+.date {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.welcome {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #1c2b40, #172131);
+  margin-bottom: 20px;
+}
+
+.welcome h1 {
+  font-size: 25px;
+  margin: 0 0 8px;
+}
+
+.welcome h1 span {
+  color: var(--gold);
+}
+
+.welcome p {
+  color: var(--muted);
+  margin: 0;
+}
+
+.section-title {
+  font-size: 18px;
+  margin: 26px 0 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  min-width: 0;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--gold);
+}
+
+.card .icon {
+  font-size: 24px;
+}
+
+.card h3 {
+  font-size: 15px;
+  margin: 8px 0 4px;
+}
+
+.card p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.focus {
+  border-right: 3px solid var(--gold);
+}
+
+.focus strong {
+  color: var(--gold);
+}
+
+.progress-track {
+  height: 7px;
+  background: #303d50;
+  border-radius: 10px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--gold);
+}
+
+footer {
+  margin-top: 30px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 420px) {
+  .brand {
+    font-size: 19px;
+  }
+
+  .welcome h1 {
+    font-size: 22px;
+  }
+
+  .grid {
+    gap: 9px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+}
