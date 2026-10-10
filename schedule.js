@@ -1,215 +1,615 @@
 
 /* ========================================
-   MY LIFE OS — Schedule & Reminders
-   الجدول والمواعيد والتذكيرات
+   MY LIFE OS — SCHEDULE MANAGER
+   إدارة الجدول الزمني
 ======================================== */
 
 "use strict";
 
-const ScheduleManager = (() => {
-  const STORAGE_KEY = "schedule-events";
+(function (window) {
+  if (window.ScheduleManager) {
+    console.warn("[MY LIFE OS] ScheduleManager موجود مسبقًا.");
+    return;
+  }
 
-  const TYPES = [
+  const STORAGE_KEY = "schedule";
+
+  const VALID_TYPES = [
     "task",
-    "appointment",
     "study",
-    "exercise",
-    "worship",
+    "work",
+    "health",
     "personal",
-    "reminder"
+    "family",
+    "rest",
+    "appointment",
+    "other"
   ];
 
-  function getAll() {
-    const events = AppStorage.get(STORAGE_KEY, []);
-    return Array.isArray(events) ? events : [];
+  let events = [];
+  let initialized = false;
+
+  function createId() {
+    if (
+      window.AppUtils &&
+      typeof window.AppUtils.createId === "function"
+    ) {
+      return window.AppUtils.createId();
+    }
+
+    return "event-" +
+      Date.now().toString(36) +
+      "-" +
+      Math.random().toString(36).slice(2, 9);
+  }
+
+  function now() {
+    return new Date().toISOString();
+  }
+
+  function getStorage() {
+    return window.AppStorage || null;
+  }
+
+  function emit(name, detail) {
+    if (
+      window.AppEvents &&
+      typeof window.AppEvents.emit === "function"
+    ) {
+      window.AppEvents.emit(name, detail);
+    }
+  }
+
+  function cleanText(value, maxLength = 500) {
+    return typeof value === "string"
+      ? value.trim().slice(0, maxLength)
+      : "";
+  }
+
+  function normalizeDate(value) {
+    if (
+      typeof value !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(value)
+    ) {
+      return null;
+    }
+
+    const date = new Date(value + "T00:00:00Z");
+
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value
+    ) {
+      return null;
+    }
+
+    return value;
+  }
+
+  function normalizeTime(value) {
+    return typeof value === "string" &&
+      /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+      ? value
+      : null;
+  }
+
+  function normalizeEvent(input) {
+    if (!input || typeof input !== "object") {
+      return null;
+    }
+
+    const title = cleanText(input.title, 200);
+    const date = normalizeDate(input.date);
+
+    if (!title || !date) {
+      return null;
+    }
+
+    const startTime = normalizeTime(input.startTime);
+    const endTime = normalizeTime(input.endTime);
+
+    if (
+      input.startTime &&
+      !startTime
+    ) {
+      return null;
+    }
+
+    if (
+      input.endTime &&
+      !endTime
+    ) {
+      return null;
+    }
+
+    if (
+      startTime &&
+      endTime &&
+      endTime <= startTime
+    ) {
+      return null;
+    }
+
+    const duration = Number(input.durationMinutes);
+
+    return {
+      id: typeof input.id === "string" && input.id
+        ? input.id
+        : createId(),
+
+      title,
+      description: cleanText(input.description, 3000),
+      date,
+      startTime,
+      endTime,
+
+      durationMinutes: Number.isFinite(duration)
+        ? Math.max(0, Math.min(1440, Math.round(duration)))
+        : 0,
+
+      type: VALID_TYPES.includes(input.type)
+        ? input.type
+        : "other",
+
+      taskId: typeof input.taskId === "string"
+        ? input.taskId
+        : null,
+
+      goalId: typeof input.goalId === "string"
+        ? input.goalId
+        : null,
+
+      location: cleanText(input.location, 300),
+      completed: Boolean(input.completed),
+      notes: cleanText(input.notes, 3000),
+
+      createdAt: input.createdAt || now(),
+      updatedAt: now()
+    };
+  }
+
+  function load() {
+    const storage = getStorage();
+
+    if (!storage || typeof storage.get !== "function") {
+      events = [];
+      return;
+    }
+
+    try {
+      const saved = storage.get(STORAGE_KEY);
+
+      events = Array.isArray(saved)
+        ? saved.map(normalizeEvent).filter(Boolean)
+        : [];
+    } catch (error) {
+      console.error(
+        "[MY LIFE OS] تعذر تحميل الجدول الزمني.",
+        error
+      );
+
+      events = [];
+    }
+  }
+
+  function save() {
+    const storage = getStorage();
+
+    if (!storage || typeof storage.set !== "function") {
+      return false;
+    }
+
+    try {
+      return storage.set(STORAGE_KEY, events) !== false;
+    } catch (error) {
+      console.error(
+        "[MY LIFE OS] تعذر حفظ الجدول الزمني.",
+        error
+      );
+
+      return false;
+    }
+  }
+
+  function initialize() {
+    if (initialized) {
+      return getAll();
+    }
+
+    load();
+    initialized = true;
+
+    emit("schedule:initialized", getAll());
+
+    console.info("[MY LIFE OS] تمت تهيئة الجدول الزمني.");
+
+    return getAll();
+  }
+
+  function getAll(filters = {}) {
+    if (!initialized) {
+      initialize();
+    }
+
+    let result = [...events];
+
+    if (filters.date) {
+      result = result.filter(
+        (event) => event.date === filters.date
+      );
+    }
+
+    if (filters.fromDate) {
+      result = result.filter(
+        (event) => event.date >= filters.fromDate
+      );
+    }
+
+    if (filters.toDate) {
+      result = result.filter(
+        (event) => event.date <= filters.toDate
+      );
+    }
+
+    if (filters.type) {
+      result = result.filter(
+        (event) => event.type === filters.type
+      );
+    }
+
+    if (filters.taskId) {
+      result = result.filter(
+        (event) => event.taskId === filters.taskId
+      );
+    }
+
+    if (filters.completed !== undefined) {
+      result = result.filter(
+        (event) => event.completed === filters.completed
+      );
+    }
+
+    result.sort((a, b) => {
+      const dateDifference = a.date.localeCompare(b.date);
+
+      if (dateDifference !== 0) {
+        return dateDifference;
+      }
+
+      return (a.startTime || "99:99").localeCompare(
+        b.startTime || "99:99"
+      );
+    });
+
+    return result;
   }
 
   function getById(id) {
-    return getAll().find(event => event.id === id) || null;
+    if (!initialized) {
+      initialize();
+    }
+
+    return events.find((event) => event.id === id) || null;
   }
 
-  function create(data = {}) {
-    const title =
-      typeof data.title === "string"
-        ? data.title.trim()
-        : "";
-
-    if (!title) {
+  function validateLinks(input) {
+    if (
+      input.taskId &&
+      window.TasksManager &&
+      !window.TasksManager.getById(input.taskId)
+    ) {
       return {
-        success: false,
-        message: "اكتب عنوان الموعد أولًا."
+        valid: false,
+        message: "المهمة المرتبطة غير موجودة."
       };
     }
 
-    const date =
-      typeof data.date === "string"
-        ? data.date
-        : AppUtils.getToday();
+    if (
+      input.goalId &&
+      window.GoalsManager &&
+      !window.GoalsManager.getById(input.goalId)
+    ) {
+      return {
+        valid: false,
+        message: "الهدف المرتبط غير موجود."
+      };
+    }
 
-    const event = {
-      id: AppUtils.createId(),
-      title,
-      description:
-        typeof data.description === "string"
-          ? data.description.trim()
-          : "",
-      type: TYPES.includes(data.type) ? data.type : "personal",
-      date,
-      startTime:
-        typeof data.startTime === "string"
-          ? data.startTime
-          : "",
-      endTime:
-        typeof data.endTime === "string"
-          ? data.endTime
-          : "",
-      reminderAt:
-        typeof data.reminderAt === "string"
-          ? data.reminderAt
-          : null,
-      recurring:
-        typeof data.recurring === "string"
-          ? data.recurring
-          : "none",
-      relatedTaskId:
-        typeof data.relatedTaskId === "string"
-          ? data.relatedTaskId
-          : null,
-      relatedGoalId:
-        typeof data.relatedGoalId === "string"
-          ? data.relatedGoalId
-          : null,
-      completed: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+    return { valid: true };
+  }
+
+  function hasConflict(candidate, excludeId = null) {
+    if (!candidate.startTime || !candidate.endTime) {
+      return false;
+    }
+
+    return events.some((event) => {
+      if (
+        event.id === excludeId ||
+        event.date !== candidate.date ||
+        !event.startTime ||
+        !event.endTime
+      ) {
+        return false;
+      }
+
+      return (
+        candidate.startTime < event.endTime &&
+        candidate.endTime > event.startTime
+      );
+    });
+  }
+
+  function create(input = {}) {
+    if (!initialized) {
+      initialize();
+    }
+
+    const event = normalizeEvent({
+      ...input,
+      id: createId(),
+      createdAt: now(),
+      updatedAt: now()
+    });
+
+    if (!event) {
+      return {
+        success: false,
+        message: "تحقق من العنوان والتاريخ والأوقات."
+      };
+    }
+
+    const links = validateLinks(event);
+
+    if (!links.valid) {
+      return {
+        success: false,
+        message: links.message
+      };
+    }
+
+    if (hasConflict(event)) {
+      return {
+        success: false,
+        conflict: true,
+        message: "يتعارض هذا الموعد مع موعد آخر."
+      };
+    }
+
+    events.push(event);
+
+    const saved = save();
+
+    emit("schedule:created", {
+      event: { ...event },
+      saved
+    });
+
+    return {
+      success: true,
+      saved,
+      event: { ...event }
     };
-
-    const result = AppStorage.set(
-      STORAGE_KEY,
-      [...getAll(), event]
-    );
-
-    return result.success
-      ? { success: true, event }
-      : result;
   }
 
   function update(id, changes = {}) {
-    const events = getAll();
-    const index = events.findIndex(event => event.id === id);
+    if (!initialized) {
+      initialize();
+    }
+
+    const index = events.findIndex(
+      (event) => event.id === id
+    );
 
     if (index === -1) {
       return {
         success: false,
-        message: "لم يتم العثور على الموعد."
+        message: "الموعد غير موجود."
       };
     }
 
-    const event = { ...events[index] };
-
-    for (const field of [
+    const allowed = [
       "title",
       "description",
       "date",
       "startTime",
       "endTime",
-      "reminderAt",
-      "recurring"
-    ]) {
-      if (typeof changes[field] === "string") {
-        event[field] = changes[field].trim();
-      }
-    }
-
-    if (TYPES.includes(changes.type)) {
-      event.type = changes.type;
-    }
+      "durationMinutes",
+      "type",
+      "taskId",
+      "goalId",
+      "location",
+      "completed",
+      "notes"
+    ];
 
     if (
-      changes.reminderAt === null ||
-      changes.reminderAt === ""
+      !changes ||
+      typeof changes !== "object" ||
+      Array.isArray(changes)
     ) {
-      event.reminderAt = null;
-    }
-
-    if (typeof changes.completed === "boolean") {
-      event.completed = changes.completed;
-    }
-
-    if (
-      changes.relatedTaskId === null ||
-      typeof changes.relatedTaskId === "string"
-    ) {
-      event.relatedTaskId = changes.relatedTaskId;
-    }
-
-    if (
-      changes.relatedGoalId === null ||
-      typeof changes.relatedGoalId === "string"
-    ) {
-      event.relatedGoalId = changes.relatedGoalId;
-    }
-
-    event.updatedAt = new Date().toISOString();
-    events[index] = event;
-
-    const result = AppStorage.set(STORAGE_KEY, events);
-
-    return result.success
-      ? { success: true, event }
-      : result;
-  }
-
-  function remove(id) {
-    const events = getAll();
-
-    if (!events.some(event => event.id === id)) {
       return {
         success: false,
-        message: "لم يتم العثور على الموعد."
+        message: "التغييرات غير صالحة."
       };
     }
 
-    const result = AppStorage.set(
-      STORAGE_KEY,
-      events.filter(event => event.id !== id)
-    );
+    for (const key of Object.keys(changes)) {
+      if (!allowed.includes(key)) {
+        return {
+          success: false,
+          message: "لا يمكن تعديل الحقل: " + key
+        };
+      }
+    }
 
-    return result.success
-      ? { success: true }
-      : result;
+    const updated = normalizeEvent({
+      ...events[index],
+      ...changes,
+      id,
+      createdAt: events[index].createdAt,
+      updatedAt: now()
+    });
+
+    if (!updated) {
+      return {
+        success: false,
+        message: "تحقق من بيانات الموعد."
+      };
+    }
+
+    const links = validateLinks(updated);
+
+    if (!links.valid) {
+      return {
+        success: false,
+        message: links.message
+      };
+    }
+
+    if (hasConflict(updated, id)) {
+      return {
+        success: false,
+        conflict: true,
+        message: "يتعارض الموعد الجديد مع موعد آخر."
+      };
+    }
+
+    events[index] = updated;
+
+    const saved = save();
+
+    emit("schedule:updated", {
+      event: { ...updated },
+      saved
+    });
+
+    return {
+      success: true,
+      saved,
+      event: { ...updated }
+    };
   }
 
-  function getByDate(date) {
-    return getAll()
-      .filter(event => event.date === date)
-      .sort((a, b) =>
-        (a.startTime || "99:99").localeCompare(
-          b.startTime || "99:99"
-        )
-      );
+  function complete(id) {
+    return update(id, { completed: true });
   }
 
-  function getUpcoming(limit = 10) {
-    const today = AppUtils.getToday();
+  function remove(id) {
+    if (!initialized) {
+      initialize();
+    }
 
-    return getAll()
-      .filter(event => event.date >= today && !event.completed)
-      .sort((a, b) => {
-        const dateA = `${a.date} ${a.startTime || "23:59"}`;
-        const dateB = `${b.date} ${b.startTime || "23:59"}`;
-        return dateA.localeCompare(dateB);
-      })
-      .slice(0, Math.max(0, limit));
+    const event = getById(id);
+
+    if (!event) {
+      return {
+        success: false,
+        message: "الموعد غير موجود."
+      };
+    }
+
+    events = events.filter((item) => item.id !== id);
+
+    const saved = save();
+
+    emit("schedule:deleted", {
+      event: { ...event },
+      saved
+    });
+
+    return {
+      success: true,
+      saved
+    };
   }
 
-  return Object.freeze({
+  function getToday() {
+    const date = new Date();
+
+    const localToday = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-");
+
+    return getAll({ date: localToday });
+  }
+
+  function getUpcoming(days = 7) {
+    const number = Number(days);
+
+    if (!Number.isFinite(number) || number < 1) {
+      return [];
+    }
+
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setDate(end.getDate() + Math.min(365, Math.floor(number)));
+
+    const toDate = [
+      end.getFullYear(),
+      String(end.getMonth() + 1).padStart(2, "0"),
+      String(end.getDate()).padStart(2, "0")
+    ].join("-");
+
+    const fromDate = [
+      start.getFullYear(),
+      String(start.getMonth() + 1).padStart(2, "0"),
+      String(start.getDate()).padStart(2, "0")
+    ].join("-");
+
+    return getAll({ fromDate, toDate });
+  }
+
+  function getSummary() {
+    if (!initialized) {
+      initialize();
+    }
+
+    const todayEvents = getToday();
+    const upcoming = getUpcoming(7);
+
+    return {
+      total: events.length,
+      today: todayEvents.length,
+      todayCompleted: todayEvents.filter(
+        (event) => event.completed
+      ).length,
+      upcomingWeek: upcoming.length,
+      upcomingIncomplete: upcoming.filter(
+        (event) => !event.completed
+      ).length
+    };
+  }
+
+  function reset() {
+    events = [];
+
+    const saved = save();
+
+    emit("schedule:reset", { saved });
+
+    return {
+      success: true,
+      saved
+    };
+  }
+
+  window.ScheduleManager = Object.freeze({
+    initialize,
     getAll,
     getById,
     create,
     update,
+    complete,
     remove,
-    getByDate,
-    getUpcoming
+    getToday,
+    getUpcoming,
+    getSummary,
+    reset
   });
-})();
+
+})(window);
