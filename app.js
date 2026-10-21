@@ -1,31 +1,35 @@
 /* =========================================
    MY LIFE OS — APPLICATION ENTRY POINT
    File: App.js
+   Version: 2.0.0
 
    المسؤوليات:
    - تعريف معلومات التطبيق.
    - تسجيل الوحدات واكتشافها.
    - تهيئة التطبيق مرة واحدة.
-   - تحميل التفضيلات عند توفرها.
+   - تحميل الإعدادات عند توفرها.
    - توفير حالة واضحة عن الوحدات المتاحة.
-   - تجنب توقف التطبيق بسبب تعطل وحدة اختيارية.
+   - عزل أخطاء الوحدات الاختيارية.
 ========================================= */
 
 (function (window, document) {
     "use strict";
 
+    if (window.MyLifeOS) {
+        console.warn(
+            "[MY LIFE OS] التطبيق مسجل مسبقًا."
+        );
+        return;
+    }
+
     const APP_INFO = Object.freeze({
         name: "مشروع القمة",
         englishName: "MY LIFE OS",
-        version: "1.0.0",
+        version: "2.0.0",
         language: "ar",
         direction: "rtl"
     });
 
-    /*
-     * قائمة الوحدات المركزية.
-     * تُحدّث حالة كل وحدة بحسب توفرها الفعلي.
-     */
     const MODULES = Object.freeze([
         { name: "AppUtils", label: "الأدوات الأساسية" },
         { name: "AppStorage", label: "التخزين المحلي" },
@@ -54,26 +58,45 @@
         { name: "DigitalLifeManager", label: "الحياة الرقمية" }
     ]);
 
-    /*
-     * سجل داخلي للوحدات.
-     * يتيح ربط الوحدات حتى عندما لا تكون متاحة
-     * مباشرةً عبر window أو globalThis.
-     */
     const moduleRegistry = Object.create(null);
+    const initializationErrors = [];
 
     let initialized = false;
     let initializationPromise = null;
     let lastInitializationError = null;
 
-    /*
-     * تسجيل وحدة.
-     *
-     * مثال عند دمج ملف وحدة لاحقًا:
-     * window.MyLifeOS.registerModule(
-     *     "GoalsManager",
-     *     GoalsManager
-     * );
-     */
+    function isObject(value) {
+        return value !== null &&
+            typeof value === "object" &&
+            !Array.isArray(value);
+    }
+
+    function emit(name, detail) {
+        try {
+            if (
+                window.AppEvents &&
+                typeof window.AppEvents.emit === "function"
+            ) {
+                window.AppEvents.emit(name, detail);
+                return;
+            }
+
+            if (typeof window.CustomEvent === "function") {
+                window.dispatchEvent(
+                    new window.CustomEvent(name, {
+                        detail: detail
+                    })
+                );
+            }
+        } catch (error) {
+            console.warn(
+                "[MY LIFE OS] تعذر إرسال الحدث:",
+                name,
+                error
+            );
+        }
+    }
+
     function registerModule(name, value) {
         if (
             typeof name !== "string" ||
@@ -87,18 +110,40 @@
             };
         }
 
-        moduleRegistry[name] = value;
+        const moduleName = name.trim();
+
+        moduleRegistry[moduleName] = value;
+
+        emit("app:module-registered", {
+            name: moduleName
+        });
 
         return {
             success: true,
-            message: "تم تسجيل الوحدة: " + name
+            message: "تم تسجيل الوحدة: " + moduleName
         };
     }
 
-    /*
-     * الحصول على وحدة من السجل أو النطاق العام.
-     * لا يفترض أن جميع الوحدات متاحة منذ البداية.
-     */
+    function unregisterModule(name) {
+        if (
+            typeof name !== "string" ||
+            !Object.prototype.hasOwnProperty.call(
+                moduleRegistry,
+                name
+            )
+        ) {
+            return false;
+        }
+
+        delete moduleRegistry[name];
+
+        emit("app:module-unregistered", {
+            name: name
+        });
+
+        return true;
+    }
+
     function getGlobalModule(name) {
         if (
             Object.prototype.hasOwnProperty.call(
@@ -125,7 +170,7 @@
             }
         } catch (error) {
             console.warn(
-                "MY LIFE OS: تعذر الوصول إلى الوحدة:",
+                "[MY LIFE OS] تعذر الوصول إلى الوحدة:",
                 name,
                 error
             );
@@ -134,9 +179,6 @@
         return undefined;
     }
 
-    /*
-     * التحقق من الوحدات المتوفرة.
-     */
     function checkModules() {
         return MODULES.map(function (module) {
             const value = getGlobalModule(module.name);
@@ -144,14 +186,12 @@
             return {
                 name: module.name,
                 label: module.label,
-                available: Boolean(value)
+                available: value !== undefined &&
+                    value !== null
             };
         });
     }
 
-    /*
-     * تقرير حالة التطبيق.
-     */
     function getStatus() {
         const modules = checkModules();
 
@@ -163,7 +203,7 @@
 
         return {
             initialized: initialized,
-            initializing: Boolean(initializationPromise),
+            initializing: initializationPromise !== null,
             app: APP_INFO,
             totalModules: modules.length,
             availableModules: availableModules,
@@ -175,13 +215,11 @@
                     return module.name;
                 }),
             lastInitializationError: lastInitializationError,
+            initializationErrors: initializationErrors.slice(),
             modules: modules
         };
     }
 
-    /*
-     * تطبيق اللغة والاتجاه الأساسيين.
-     */
     function applyDocumentDefaults(root) {
         if (!root) {
             return;
@@ -191,57 +229,68 @@
         root.dir = APP_INFO.direction;
     }
 
-    /*
-     * تحميل إعدادات المستخدم إن كانت الوحدة متاحة.
-     */
     function loadUserPreferences(root) {
         const settings = getGlobalModule("SettingsManager");
 
-        if (
-            !settings ||
-            typeof settings.getAll !== "function"
-        ) {
-            return;
+        if (!settings) {
+            return {
+                success: false,
+                skipped: true,
+                message: "وحدة الإعدادات غير متاحة."
+            };
         }
 
         try {
+            /*
+             * تهيئة الإعدادات قبل قراءتها عند توفر الدالة.
+             */
+            if (typeof settings.initialize === "function") {
+                settings.initialize();
+            }
+
+            if (typeof settings.getAll !== "function") {
+                return {
+                    success: false,
+                    skipped: true,
+                    message: "وحدة الإعدادات لا توفر getAll."
+                };
+            }
+
             const preferences = settings.getAll();
 
-            if (
-                !preferences ||
-                typeof preferences !== "object"
-            ) {
-                return;
+            if (!isObject(preferences)) {
+                return {
+                    success: false,
+                    message: "بيانات الإعدادات غير صالحة."
+                };
             }
 
-            if (
-                typeof preferences.language === "string" &&
-                preferences.language.trim() &&
-                root
-            ) {
-                root.lang = preferences.language;
+            /*
+             * هذه النسخة تعتمد العربية وRTL.
+             * لا نسمح لإعدادات غير متوقعة بتغيير الاتجاه.
+             */
+            if (root) {
+                root.lang = APP_INFO.language;
+                root.dir = APP_INFO.direction;
             }
 
-            if (
-                typeof preferences.direction === "string" &&
-                ["rtl", "ltr"].includes(
-                    preferences.direction
-                ) &&
-                root
-            ) {
-                root.dir = preferences.direction;
-            }
+            return {
+                success: true,
+                preferences: preferences
+            };
         } catch (error) {
-            console.warn(
-                "MY LIFE OS: تعذر تحميل تفضيلات المستخدم.",
+            recordError(
+                "SettingsManager",
                 error
             );
+
+            return {
+                success: false,
+                message: error.message || "تعذر تحميل الإعدادات."
+            };
         }
     }
 
-    /*
-     * تشغيل التهيئة الافتراضية لوحدة العبارات التحفيزية.
-     */
     function initializeAffirmations() {
         const affirmations = getGlobalModule(
             "AffirmationsManager"
@@ -251,26 +300,60 @@
             !affirmations ||
             typeof affirmations.initializeDefaults !== "function"
         ) {
-            return;
+            return {
+                success: true,
+                skipped: true
+            };
         }
 
         try {
             affirmations.initializeDefaults();
+
+            return {
+                success: true
+            };
         } catch (error) {
-            console.warn(
-                "MY LIFE OS: تعذرت تهيئة العبارات التحفيزية.",
+            recordError(
+                "AffirmationsManager",
                 error
             );
+
+            return {
+                success: false,
+                message: error.message ||
+                    "تعذرت تهيئة العبارات التحفيزية."
+            };
         }
     }
 
-    /*
-     * تهيئة التطبيق.
-     *
-     * لا يؤدي غياب وحدة اختيارية إلى إيقاف التطبيق.
-     */
+    function recordError(moduleName, error) {
+        const message = error && error.message
+            ? error.message
+            : "حدث خطأ غير معروف.";
+
+        const entry = {
+            module: moduleName,
+            message: message
+        };
+
+        initializationErrors.push(entry);
+
+        /*
+         * الاحتفاظ بعدد محدود من الأخطاء لتجنب نمو السجل.
+         */
+        if (initializationErrors.length > 100) {
+            initializationErrors.shift();
+        }
+
+        console.warn(
+            "[MY LIFE OS] مشكلة في الوحدة:",
+            moduleName,
+            error
+        );
+    }
+
     function initialize(options) {
-        options = options || {};
+        const config = isObject(options) ? options : {};
 
         if (initialized) {
             return Promise.resolve(getStatus());
@@ -280,9 +363,14 @@
             return initializationPromise;
         }
 
-        initializationPromise = Promise.resolve().then(
-            function () {
-                const root = options.root ||
+        initializationErrors.length = 0;
+        lastInitializationError = null;
+
+        let currentPromise;
+
+        currentPromise = Promise.resolve()
+            .then(function () {
+                const root = config.root ||
                     (
                         typeof document !== "undefined"
                             ? document.documentElement
@@ -290,7 +378,15 @@
                     );
 
                 applyDocumentDefaults(root);
+
+                /*
+                 * خطأ الإعدادات لا يوقف تشغيل بقية التطبيق.
+                 */
                 loadUserPreferences(root);
+
+                /*
+                 * العبارات التحفيزية وحدة اختيارية.
+                 */
                 initializeAffirmations();
 
                 initialized = true;
@@ -298,54 +394,80 @@
 
                 const status = getStatus();
 
+                emit("app:initialized", status);
+
                 console.info(
-                    "MY LIFE OS: اكتملت تهيئة التطبيق.",
+                    "[MY LIFE OS] اكتملت تهيئة التطبيق.",
                     {
                         availableModules: status.availableModules,
-                        totalModules: status.totalModules
+                        totalModules: status.totalModules,
+                        initializationErrors:
+                            status.initializationErrors.length
                     }
                 );
 
                 return status;
-            }
-        ).catch(function (error) {
-            lastInitializationError =
-                error && error.message
-                    ? error.message
-                    : "حدث خطأ غير معروف أثناء التهيئة.";
+            })
+            .catch(function (error) {
+                lastInitializationError =
+                    error && error.message
+                        ? error.message
+                        : "حدث خطأ غير معروف أثناء التهيئة.";
 
-            console.error(
-                "MY LIFE OS: حدث خطأ أثناء التهيئة.",
-                error
-            );
+                recordError("Application", error);
 
-            return getStatus();
-        }).finally(function () {
-            initializationPromise = null;
-        });
+                emit("app:initialization-failed", {
+                    message: lastInitializationError
+                });
 
-        return initializationPromise;
+                console.error(
+                    "[MY LIFE OS] حدث خطأ أثناء التهيئة.",
+                    error
+                );
+
+                return getStatus();
+            })
+            .finally(function () {
+                /*
+                 * لا تسمح لعملية قديمة بمسح مرجع عملية أحدث.
+                 */
+                if (initializationPromise === currentPromise) {
+                    initializationPromise = null;
+                }
+            });
+
+        initializationPromise = currentPromise;
+
+        return currentPromise;
     }
 
-    /*
-     * إعادة ضبط حالة التهيئة لأغراض الاختبار.
-     * لا تحذف البيانات ولا تعيد تحميل الصفحة.
-     */
     function resetInitialization() {
+        /*
+         * هذه الدالة لإعادة ضبط حالة التهيئة فقط.
+         * لا تحذف البيانات ولا توقف عملية جارية.
+         */
+        if (initializationPromise) {
+            return {
+                success: false,
+                message: "لا يمكن إعادة الضبط أثناء التهيئة.",
+                status: getStatus()
+            };
+        }
+
         initialized = false;
-        initializationPromise = null;
         lastInitializationError = null;
+        initializationErrors.length = 0;
+
+        emit("app:initialization-reset", {});
 
         return getStatus();
     }
 
-    /*
-     * الواجهة العامة للتطبيق.
-     */
     const MyLifeOS = Object.freeze({
         APP_INFO: APP_INFO,
         MODULES: MODULES,
         registerModule: registerModule,
+        unregisterModule: unregisterModule,
         getGlobalModule: getGlobalModule,
         checkModules: checkModules,
         getStatus: getStatus,
@@ -353,21 +475,16 @@
         resetInitialization: resetInitialization
     });
 
-    /*
-     * إتاحة التطبيق لبقية ملفات JavaScript.
-     */
     window.MyLifeOS = MyLifeOS;
 
-    /*
-     * بدء التشغيل بعد جاهزية HTML.
-     * يعمل سواء حُمّل الملف قبل DOMContentLoaded
-     * أو بعده.
-     */
     function startApplication() {
         initialize();
     }
 
-    if (document.readyState === "loading") {
+    if (
+        typeof document !== "undefined" &&
+        document.readyState === "loading"
+    ) {
         document.addEventListener(
             "DOMContentLoaded",
             startApplication,
