@@ -1,22 +1,25 @@
 /* =========================================================
 MY LIFE OS — NOTIFICATION MANAGER
 File: Notification.js
-Version: 1.0.0
+Version: 2.0.0
 
 الوظائف:
 
 - إنشاء الإشعارات وإدارتها.
 - تحديد المقروء وغير المقروء.
-- تحديد الأولوية والتصنيف.
-- جدولة تذكيرات محلية.
-- البحث والتصفية.
-- إحصاءات الإشعارات.
-- تصدير البيانات واستيرادها.
+- إدارة الأولوية والتصنيف.
+- جدولة التذكيرات أثناء تشغيل الصفحة.
+- البحث والتصفية والإحصاءات.
+- تصدير البيانات واستيرادها والتحقق منها.
 - دعم إشعارات المتصفح عند توفرها.
+- استخدام AppStorage عند توفره.
+- التوافق مع مفتاح التخزين القديم.
+- التحقق من البيانات واستعادة الحالة عند فشل الحفظ.
 
-ملاحظة:
-التذكيرات تعمل أثناء تشغيل الصفحة فقط.
-الإشعارات في الخلفية تتطلب تكاملًا إضافيًا.
+تنبيه:
+التذكيرات المجدولة تعتمد على تشغيل الصفحة.
+إشعارات الخلفية بعد إغلاق الصفحة تحتاج إلى
+Service Worker وتكامل إضافي.
 ========================================================= */
 
 (function (global) {
@@ -26,10 +29,17 @@ if (global.NotificationManager) {
 return;
 }
 
-const VERSION = "1.0.0";
+const VERSION = "2.0.0";
 const STORAGE_KEY = "my_life_os_notifications_v1";
+const APP_STORAGE_KEY = "notifications";
 
-const TYPES = [
+const FORMAT = "MY_LIFE_OS_NOTIFICATIONS";
+const MAX_TITLE_LENGTH = 200;
+const MAX_MESSAGE_LENGTH = 5000;
+const MAX_NOTIFICATIONS = 5000;
+const MAX_METADATA_DEPTH = 8;
+
+const TYPES = Object.freeze([
 "general",
 "task",
 "goal",
@@ -40,24 +50,24 @@ const TYPES = [
 "learning",
 "career",
 "system"
-];
+]);
 
-const PRIORITIES = [
+const PRIORITIES = Object.freeze([
 "low",
 "normal",
 "high",
 "urgent"
-];
+]);
 
-const MAX_TITLE_LENGTH = 200;
-const MAX_MESSAGE_LENGTH = 5000;
-const MAX_NOTIFICATIONS = 5000;
-
-let timers = new Map();
+const timers = new Map();
 
 /* =======================================================
 UTILITIES
 ======================================================= */
+
+function nowISO() {
+return new Date().toISOString();
+}
 
 function createId() {
 return (
@@ -68,14 +78,22 @@ Math.random().toString(36).slice(2, 10)
 );
 }
 
-function nowISO() {
-return new Date().toISOString();
+function cleanText(value, maxLength) {
+if (value === null || value === undefined) {
+return "";
 }
 
-function cleanText(value, maxLength) {
-return String(value == null ? "" : value)
-.trim()
-.slice(0, maxLength || 500);
+if (
+  typeof value !== "string" &&
+  typeof value !== "number"
+) {
+  return "";
+}
+
+return String(value)
+  .trim()
+  .slice(0, maxLength || 500);
+
 }
 
 function isPlainObject(value) {
@@ -101,9 +119,22 @@ return JSON.parse(JSON.stringify(value));
 }
 
 function validateEnum(value, allowed, field) {
-if (allowed.indexOf(value) === -1) {
-throw new Error("قيمة غير صالحة للحقل: " + field);
+if (!allowed.includes(value)) {
+throw new Error(
+"قيمة غير صالحة للحقل: " + field
+);
 }
+
+return value;
+
+}
+
+function isValidDate(value) {
+return (
+typeof value === "string" &&
+value.length > 0 &&
+Number.isFinite(Date.parse(value))
+);
 }
 
 function emit(eventName, details) {
@@ -134,46 +165,278 @@ try {
     typeof global.CustomEvent === "function"
   ) {
     global.dispatchEvent(
-      new CustomEvent("my-life-os:notification", {
-        detail: payload
-      })
+      new global.CustomEvent(
+        "my-life-os:notification",
+        { detail: payload }
+      )
     );
   }
 } catch (error) {
-  // التوافق مع البيئات التي لا تدعم CustomEvent.
+  // دعم البيئات التي لا تدعم CustomEvent.
+}
+
+}
+
+function safePersist() {
+if (
+global.AppStorage &&
+typeof global.AppStorage.set === "function"
+) {
+const result = global.AppStorage.set(
+APP_STORAGE_KEY,
+data
+);
+
+  if (
+    result === false ||
+    (result && result.success === false)
+  ) {
+    throw new Error(
+      result.message || "تعذر حفظ الإشعارات."
+    );
+  }
+
+  return true;
+}
+
+try {
+  if (!global.localStorage) {
+    throw new Error(
+      "التخزين المحلي غير متاح."
+    );
+  }
+
+  global.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(data)
+  );
+
+  return true;
+} catch (error) {
+  throw new Error(
+    "تعذر حفظ الإشعارات: " +
+    (error.message || "خطأ في التخزين.")
+  );
+}
+
+}
+
+function persist() {
+const previousUpdatedAt = data.updatedAt;
+
+data.updatedAt = nowISO();
+
+try {
+  safePersist();
+  return true;
+} catch (error) {
+  data.updatedAt = previousUpdatedAt;
+  throw error;
 }
 
 }
 
 /* =======================================================
-DATA
+DATA MODEL
 ======================================================= */
 
 function createEmptyData() {
+const timestamp = nowISO();
+
 return {
-schemaVersion: 1,
-createdAt: nowISO(),
-updatedAt: nowISO(),
-settings: {
-enabled: true,
-browserNotifications: false,
-keepReadNotifications: true,
-maxNotifications: 5000
-},
-items: []
+  schemaVersion: 2,
+  createdAt: timestamp,
+  updatedAt: timestamp,
+
+  settings: {
+    enabled: true,
+    browserNotifications: false,
+    keepReadNotifications: true,
+    maxNotifications: MAX_NOTIFICATIONS
+  },
+
+  items: []
 };
+
+}
+
+function normalizeSettings(settings) {
+const defaults = createEmptyData().settings;
+
+const source = isPlainObject(settings)
+  ? settings
+  : {};
+
+const requestedMax = Number(
+  source.maxNotifications
+);
+
+return {
+  enabled:
+    source.enabled === undefined
+      ? defaults.enabled
+      : source.enabled === true,
+
+  browserNotifications:
+    source.browserNotifications === true,
+
+  keepReadNotifications:
+    source.keepReadNotifications === undefined
+      ? defaults.keepReadNotifications
+      : source.keepReadNotifications === true,
+
+  maxNotifications:
+    Number.isFinite(requestedMax)
+      ? Math.min(
+          MAX_NOTIFICATIONS,
+          Math.max(1, Math.floor(requestedMax))
+        )
+      : defaults.maxNotifications
+};
+
+}
+
+function normalizeStoredItem(input) {
+if (!isPlainObject(input)) {
+return null;
+}
+
+const id = cleanText(input.id, 200);
+const title = cleanText(
+  input.title,
+  MAX_TITLE_LENGTH
+);
+
+if (!id || !title) {
+  return null;
+}
+
+const type = TYPES.includes(input.type)
+  ? input.type
+  : "general";
+
+const priority = PRIORITIES.includes(input.priority)
+  ? input.priority
+  : "normal";
+
+const createdAt = isValidDate(input.createdAt)
+  ? new Date(input.createdAt).toISOString()
+  : nowISO();
+
+const scheduledAt =
+  input.scheduledAt &&
+  isValidDate(input.scheduledAt)
+    ? new Date(input.scheduledAt).toISOString()
+    : "";
+
+const metadata = isPlainObject(input.metadata)
+  ? clone(input.metadata)
+  : {};
+
+return {
+  id,
+  title,
+  message: cleanText(
+    input.message,
+    MAX_MESSAGE_LENGTH
+  ),
+  type,
+  priority,
+  scheduledAt,
+  source: cleanText(input.source, 200),
+  actionUrl: cleanText(input.actionUrl, 2000),
+  relatedId: cleanText(input.relatedId, 200),
+  metadata,
+
+  read: input.read === true,
+
+  createdAt,
+
+  readAt: isValidDate(input.readAt)
+    ? new Date(input.readAt).toISOString()
+    : null,
+
+  deliveredAt: isValidDate(input.deliveredAt)
+    ? new Date(input.deliveredAt).toISOString()
+    : null,
+
+  dismissed: input.dismissed === true
+};
+
+}
+
+function normalizeData(input) {
+if (!isPlainObject(input)) {
+throw new Error(
+"بنية بيانات الإشعارات غير صالحة."
+);
+}
+
+const defaults = createEmptyData();
+
+const seenIds = new Set();
+
+const items = Array.isArray(input.items)
+  ? input.items
+      .map(normalizeStoredItem)
+      .filter(function (item) {
+        if (!item || seenIds.has(item.id)) {
+          return false;
+        }
+
+        seenIds.add(item.id);
+        return true;
+      })
+      .slice(0, MAX_NOTIFICATIONS)
+  : [];
+
+return {
+  schemaVersion: 2,
+
+  createdAt: isValidDate(input.createdAt)
+    ? new Date(input.createdAt).toISOString()
+    : defaults.createdAt,
+
+  updatedAt: isValidDate(input.updatedAt)
+    ? new Date(input.updatedAt).toISOString()
+    : defaults.updatedAt,
+
+  settings: normalizeSettings(input.settings),
+
+  items
+};
+
 }
 
 function loadData() {
-let raw;
+let raw = null;
+let loadedFromAppStorage = false;
 
 try {
-  raw = global.localStorage
-    ? global.localStorage.getItem(STORAGE_KEY)
-    : null;
+  if (
+    global.AppStorage &&
+    typeof global.AppStorage.has === "function" &&
+    global.AppStorage.has(APP_STORAGE_KEY)
+  ) {
+    const stored = global.AppStorage.get(
+      APP_STORAGE_KEY,
+      null
+    );
+
+    if (stored !== null) {
+      raw = JSON.stringify(stored);
+      loadedFromAppStorage = true;
+    }
+  }
+
+  if (raw === null && global.localStorage) {
+    raw = global.localStorage.getItem(
+      STORAGE_KEY
+    );
+  }
 } catch (error) {
   throw new Error(
-    "تعذر الوصول إلى التخزين المحلي للإشعارات."
+    "تعذر الوصول إلى بيانات الإشعارات المحفوظة."
   );
 }
 
@@ -187,61 +450,40 @@ try {
   parsed = JSON.parse(raw);
 } catch (error) {
   throw new Error(
-    "بيانات الإشعارات المحفوظة غير صالحة."
+    "بيانات الإشعارات المحفوظة غير صالحة. " +
+    "لم يتم حذف البيانات الأصلية."
   );
 }
 
-if (!isPlainObject(parsed)) {
-  throw new Error("بنية بيانات الإشعارات غير صالحة.");
+if (
+  !isPlainObject(parsed) ||
+  !Array.isArray(parsed.items)
+) {
+  throw new Error(
+    "بنية بيانات الإشعارات غير صالحة. " +
+    "لم يتم حذف البيانات الأصلية."
+  );
 }
 
-const defaults = createEmptyData();
+const normalized = normalizeData(parsed);
 
-return {
-  schemaVersion: 1,
-  createdAt: parsed.createdAt || defaults.createdAt,
-  updatedAt: parsed.updatedAt || defaults.updatedAt,
-  settings: Object.assign(
-    {},
-    defaults.settings,
-    isPlainObject(parsed.settings)
-      ? parsed.settings
-      : {}
-  ),
-  items: Array.isArray(parsed.items)
-    ? parsed.items.filter(isPlainObject)
-    : []
-};
+// الترحيل إلى AppStorage لا يحذف النسخة القديمة.
+if (!loadedFromAppStorage && global.AppStorage) {
+  try {
+    global.AppStorage.set(
+      APP_STORAGE_KEY,
+      normalized
+    );
+  } catch (error) {
+    // تبقى البيانات القديمة قابلة للقراءة.
+  }
+}
+
+return normalized;
 
 }
 
 let data = loadData();
-
-function persist() {
-const previousUpdatedAt = data.updatedAt;
-
-data.updatedAt = nowISO();
-
-try {
-  if (!global.localStorage) {
-    throw new Error("التخزين المحلي غير متاح.");
-  }
-
-  global.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(data)
-  );
-} catch (error) {
-  data.updatedAt = previousUpdatedAt;
-
-  throw new Error(
-    "تعذر حفظ الإشعارات: " + error.message
-  );
-}
-
-return true;
-
-}
 
 /* =======================================================
 NOTIFICATION CREATION
@@ -249,7 +491,9 @@ NOTIFICATION CREATION
 
 function normalizeNotification(input) {
 if (!isPlainObject(input)) {
-throw new Error("بيانات الإشعار غير صالحة.");
+throw new Error(
+"بيانات الإشعار غير صالحة."
+);
 }
 
 const title = cleanText(
@@ -263,7 +507,9 @@ const message = cleanText(
 );
 
 if (!title) {
-  throw new Error("عنوان الإشعار مطلوب.");
+  throw new Error(
+    "عنوان الإشعار مطلوب."
+  );
 }
 
 const type = input.type || "general";
@@ -275,24 +521,32 @@ validateEnum(priority, PRIORITIES, "priority");
 let scheduledAt = "";
 
 if (input.scheduledAt) {
-  const date = new Date(input.scheduledAt);
-
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("موعد الإشعار غير صالح.");
+  if (!isValidDate(input.scheduledAt)) {
+    throw new Error(
+      "موعد الإشعار غير صالح."
+    );
   }
 
-  scheduledAt = date.toISOString();
+  scheduledAt = new Date(
+    input.scheduledAt
+  ).toISOString();
 }
 
+const actionUrl = cleanText(
+  input.actionUrl,
+  2000
+);
+
 return {
-  title: title,
-  message: message,
-  type: type,
-  priority: priority,
-  scheduledAt: scheduledAt,
+  title,
+  message,
+  type,
+  priority,
+  scheduledAt,
   source: cleanText(input.source, 200),
-  actionUrl: "",
+  actionUrl,
   relatedId: cleanText(input.relatedId, 200),
+
   metadata: isPlainObject(input.metadata)
     ? clone(input.metadata)
     : {}
@@ -320,35 +574,30 @@ const item = Object.assign({}, normalized, {
   dismissed: false
 });
 
-data.items.unshift(item);
+const previousItems = data.items;
 
-const maxItems = Math.min(
-  MAX_NOTIFICATIONS,
-  Math.max(
-    1,
-    Number(data.settings.maxNotifications) ||
-      MAX_NOTIFICATIONS
+data.items = [
+  item,
+  ...previousItems
+].slice(
+  0,
+  Math.min(
+    MAX_NOTIFICATIONS,
+    data.settings.maxNotifications
   )
 );
-
-if (data.items.length > maxItems) {
-  data.items = data.items.slice(0, maxItems);
-}
 
 try {
   persist();
 } catch (error) {
-  data.items = data.items.filter(function (entry) {
-    return entry.id !== item.id;
-  });
-
+  data.items = previousItems;
   throw error;
 }
 
-if (!item.scheduledAt) {
-  deliver(item);
-} else {
+if (item.scheduledAt) {
   schedule(item.id);
+} else {
+  deliver(item);
 }
 
 emit("created", {
@@ -362,24 +611,28 @@ return clone(item);
 }
 
 /* =======================================================
-DELIVERY
+DELIVERY AND SCHEDULING
 ======================================================= */
 
 function deliver(item) {
-const current = data.items.find(function (entry) {
-return entry.id === item.id;
-});
+const current = findItem(item.id);
 
 if (!current || current.dismissed) {
   return false;
 }
 
+if (current.deliveredAt) {
+  return true;
+}
+
+const previous = current.deliveredAt;
 current.deliveredAt = nowISO();
 
 try {
   persist();
 } catch (error) {
-  // يبقى الإشعار محفوظًا حتى إن تعذر تحديث وقت التسليم.
+  current.deliveredAt = previous;
+  return false;
 }
 
 emit("delivered", {
@@ -397,74 +650,9 @@ if (
       tag: current.id
     });
   } catch (error) {
-    // يظل الإشعار متاحًا داخل التطبيق.
+    // يظل الإشعار محفوظًا داخل التطبيق.
   }
 }
-
-return true;
-
-}
-
-function schedule(id) {
-cancelTimer(id);
-
-const item = data.items.find(function (entry) {
-  return entry.id === id;
-});
-
-if (!item || !item.scheduledAt || item.dismissed) {
-  return false;
-}
-
-const target = Date.parse(item.scheduledAt);
-const delay = target - Date.now();
-
-if (!Number.isFinite(target)) {
-  return false;
-}
-
-if (delay <= 0) {
-  item.scheduledAt = "";
-  persist();
-  deliver(item);
-  return true;
-}
-
-/*
-  setTimeout له حد أقصى عملي. نعيد جدولة
-  المواعيد البعيدة عند الحاجة.
-*/
-
-const maxDelay = 2147483647;
-
-const timer = global.setTimeout(function () {
-  timers.delete(id);
-
-  const latest = data.items.find(function (entry) {
-    return entry.id === id;
-  });
-
-  if (!latest || latest.dismissed) {
-    return;
-  }
-
-  if (Date.parse(latest.scheduledAt) > Date.now()) {
-    schedule(id);
-    return;
-  }
-
-  latest.scheduledAt = "";
-
-  try {
-    persist();
-  } catch (error) {
-    // لا نمنع التسليم بسبب مشكلة تخزين مؤقتة.
-  }
-
-  deliver(latest);
-}, Math.min(delay, maxDelay));
-
-timers.set(id, timer);
 
 return true;
 
@@ -482,11 +670,91 @@ return true;
 
 }
 
+function schedule(id) {
+cancelTimer(id);
+
+const item = findItem(id);
+
+if (
+  !item ||
+  !item.scheduledAt ||
+  item.dismissed ||
+  item.deliveredAt
+) {
+  return false;
+}
+
+const target = Date.parse(item.scheduledAt);
+
+if (!Number.isFinite(target)) {
+  return false;
+}
+
+const delay = target - Date.now();
+
+if (delay <= 0) {
+  const previous = item.scheduledAt;
+  item.scheduledAt = "";
+
+  try {
+    persist();
+  } catch (error) {
+    item.scheduledAt = previous;
+    return false;
+  }
+
+  return deliver(item);
+}
+
+const maxDelay = 2147483647;
+
+const timer = global.setTimeout(function () {
+  timers.delete(id);
+
+  const latest = findItem(id);
+
+  if (
+    !latest ||
+    latest.dismissed ||
+    latest.deliveredAt
+  ) {
+    return;
+  }
+
+  const remaining =
+    Date.parse(latest.scheduledAt) - Date.now();
+
+  if (remaining > 0) {
+    schedule(id);
+    return;
+  }
+
+  const previous = latest.scheduledAt;
+  latest.scheduledAt = "";
+
+  try {
+    persist();
+  } catch (error) {
+    latest.scheduledAt = previous;
+    schedule(id);
+    return;
+  }
+
+  deliver(latest);
+}, Math.min(delay, maxDelay));
+
+timers.set(id, timer);
+
+return true;
+
+}
+
 function restoreScheduledTimers() {
 data.items.forEach(function (item) {
 if (
 item.scheduledAt &&
-!item.dismissed
+!item.dismissed &&
+!item.deliveredAt
 ) {
 schedule(item.id);
 }
@@ -506,6 +774,32 @@ return item.id === id;
 }) || null;
 }
 
+function updateItem(id, updater, eventName) {
+const item = findItem(id);
+
+if (!item) {
+  return false;
+}
+
+const previous = clone(item);
+
+updater(item);
+
+try {
+  persist();
+} catch (error) {
+  Object.assign(item, previous);
+  throw error;
+}
+
+if (eventName) {
+  emit(eventName, { id });
+}
+
+return clone(item);
+
+}
+
 function markRead(id) {
 const item = findItem(id);
 
@@ -513,45 +807,34 @@ if (!item) {
   return false;
 }
 
-if (!item.read) {
-  item.read = true;
-  item.readAt = nowISO();
-  persist();
-
-  emit("read", { id: id });
+if (item.read) {
+  return clone(item);
 }
 
-return clone(item);
+return updateItem(
+  id,
+  function (entry) {
+    entry.read = true;
+    entry.readAt = nowISO();
+  },
+  "read"
+);
 
 }
 
 function markUnread(id) {
-const item = findItem(id);
-
-if (!item) {
-  return false;
-}
-
+return updateItem(
+id,
+function (item) {
 item.read = false;
 item.readAt = null;
-
-persist();
-
-emit("unread", { id: id });
-
-return clone(item);
-
+},
+"unread"
+);
 }
 
 function markAllRead() {
-const previous = data.items.map(function (item) {
-return {
-id: item.id,
-read: item.read,
-readAt: item.readAt
-};
-});
-
+const previous = clone(data.items);
 const timestamp = nowISO();
 
 data.items.forEach(function (item) {
@@ -564,15 +847,7 @@ data.items.forEach(function (item) {
 try {
   persist();
 } catch (error) {
-  previous.forEach(function (entry) {
-    const item = findItem(entry.id);
-
-    if (item) {
-      item.read = entry.read;
-      item.readAt = entry.readAt;
-    }
-  });
-
+  data.items = previous;
   throw error;
 }
 
@@ -592,21 +867,28 @@ if (!item) {
   return false;
 }
 
-item.dismissed = true;
-cancelTimer(id);
+const result = updateItem(
+  id,
+  function (entry) {
+    entry.dismissed = true;
+  },
+  "dismissed"
+);
 
-persist();
+if (result) {
+  cancelTimer(id);
+}
 
-emit("dismissed", { id: id });
-
-return clone(item);
+return result;
 
 }
 
 function deleteNotification(id) {
-const index = data.items.findIndex(function (item) {
+const index = data.items.findIndex(
+function (item) {
 return item.id === id;
-});
+}
+);
 
 if (index === -1) {
   return false;
@@ -615,7 +897,6 @@ if (index === -1) {
 const removed = data.items[index];
 
 data.items.splice(index, 1);
-cancelTimer(id);
 
 try {
   persist();
@@ -624,7 +905,9 @@ try {
   throw error;
 }
 
-emit("deleted", { id: id });
+cancelTimer(id);
+
+emit("deleted", { id });
 
 return true;
 
@@ -633,10 +916,6 @@ return true;
 function clearRead() {
 const previous = data.items;
 
-data.items = data.items.filter(function (item) {
-  return !item.read;
-});
-
 const removedIds = previous
   .filter(function (item) {
     return item.read;
@@ -644,6 +923,12 @@ const removedIds = previous
   .map(function (item) {
     return item.id;
   });
+
+data.items = previous.filter(
+  function (item) {
+    return !item.read;
+  }
+);
 
 try {
   persist();
@@ -662,15 +947,17 @@ return removedIds.length;
 
 }
 
-function clearAll(settings) {
-if (!settings || settings.confirmed !== true) {
+function clearAll(options) {
+if (
+!options ||
+options.confirmed !== true
+) {
 throw new Error(
 "يجب تأكيد حذف جميع الإشعارات."
 );
 }
 
 const previous = data.items;
-
 data.items = [];
 
 try {
@@ -702,20 +989,20 @@ QUERIES
 function getAll(options) {
 const config = options || {};
 
-let result = data.items.slice();
+let items = data.items.slice();
 
 if (config.includeDismissed !== true) {
-  result = result.filter(function (item) {
+  items = items.filter(function (item) {
     return !item.dismissed;
   });
 }
 
 if (config.read === true) {
-  result = result.filter(function (item) {
+  items = items.filter(function (item) {
     return item.read;
   });
 } else if (config.read === false) {
-  result = result.filter(function (item) {
+  items = items.filter(function (item) {
     return !item.read;
   });
 }
@@ -723,7 +1010,7 @@ if (config.read === true) {
 if (config.type) {
   validateEnum(config.type, TYPES, "type");
 
-  result = result.filter(function (item) {
+  items = items.filter(function (item) {
     return item.type === config.type;
   });
 }
@@ -735,32 +1022,33 @@ if (config.priority) {
     "priority"
   );
 
-  result = result.filter(function (item) {
+  items = items.filter(function (item) {
     return item.priority === config.priority;
   });
 }
 
-result.sort(function (a, b) {
+items.sort(function (a, b) {
   return Date.parse(b.createdAt) -
     Date.parse(a.createdAt);
 });
 
-if (Number.isFinite(config.limit)) {
-  result = result.slice(
+if (
+  Number.isFinite(config.limit) &&
+  config.limit >= 0
+) {
+  items = items.slice(
     0,
-    Math.max(0, config.limit)
+    Math.floor(config.limit)
   );
 }
 
-return clone(result);
+return clone(items);
 
 }
 
 function getById(id) {
 const item = findItem(id);
-
 return item ? clone(item) : null;
-
 }
 
 function getUnreadCount() {
@@ -770,30 +1058,53 @@ return !item.read && !item.dismissed;
 }
 
 function getStatistics() {
-const visible = data.items.filter(function (item) {
+const visible = data.items.filter(
+function (item) {
 return !item.dismissed;
-});
-
-const unread = visible.filter(function (item) {
-  return !item.read;
-});
+}
+);
 
 const byType = {};
+const byPriority = {};
 
 TYPES.forEach(function (type) {
-  byType[type] = visible.filter(function (item) {
-    return item.type === type;
-  }).length;
+  byType[type] = visible.filter(
+    function (item) {
+      return item.type === type;
+    }
+  ).length;
 });
+
+PRIORITIES.forEach(function (priority) {
+  byPriority[priority] = visible.filter(
+    function (item) {
+      return item.priority === priority;
+    }
+  ).length;
+});
+
+const readCount = visible.filter(
+  function (item) {
+    return item.read;
+  }
+).length;
 
 return {
   total: visible.length,
-  unread: unread.length,
-  read: visible.length - unread.length,
-  scheduled: visible.filter(function (item) {
-    return Boolean(item.scheduledAt);
-  }).length,
-  byType: byType,
+  unread: visible.length - readCount,
+  read: readCount,
+
+  scheduled: visible.filter(
+    function (item) {
+      return Boolean(
+        item.scheduledAt &&
+        !item.deliveredAt
+      );
+    }
+  ).length,
+
+  byType,
+  byPriority,
   updatedAt: data.updatedAt
 };
 
@@ -830,40 +1141,34 @@ return clone(data.settings);
 
 function updateSettings(changes) {
 if (!isPlainObject(changes)) {
-throw new Error("إعدادات الإشعارات غير صالحة.");
+throw new Error(
+"إعدادات الإشعارات غير صالحة."
+);
 }
 
 const previous = clone(data.settings);
 
-data.settings = Object.assign(
-  {},
-  data.settings,
-  changes
+data.settings = normalizeSettings(
+  Object.assign({}, data.settings, changes)
 );
 
-data.settings.enabled =
-  Boolean(data.settings.enabled);
+const previousItems = data.items;
 
-data.settings.browserNotifications =
-  Boolean(data.settings.browserNotifications);
-
-data.settings.keepReadNotifications =
-  Boolean(data.settings.keepReadNotifications);
-
-const max = Number(data.settings.maxNotifications);
-
-data.settings.maxNotifications =
-  Number.isFinite(max)
-    ? Math.min(
-        MAX_NOTIFICATIONS,
-        Math.max(1, Math.floor(max))
-      )
-    : MAX_NOTIFICATIONS;
+if (
+  data.items.length >
+  data.settings.maxNotifications
+) {
+  data.items = data.items.slice(
+    0,
+    data.settings.maxNotifications
+  );
+}
 
 try {
   persist();
 } catch (error) {
   data.settings = previous;
+  data.items = previousItems;
   throw error;
 }
 
@@ -900,22 +1205,64 @@ const permission =
 
 return {
   supported: true,
-  permission: permission
+  permission
 };
 
 }
 
 /* =======================================================
-EXPORT / IMPORT
+EXPORT
 ======================================================= */
 
 function exportData() {
 return {
-format: "MY_LIFE_OS_NOTIFICATIONS",
+format: FORMAT,
 version: VERSION,
+schemaVersion: 2,
 exportedAt: nowISO(),
 data: clone(data)
 };
+}
+
+/* =======================================================
+IMPORT VALIDATION
+======================================================= */
+
+function validateImport(payload) {
+if (
+!isPlainObject(payload) ||
+payload.format !== FORMAT ||
+!isPlainObject(payload.data) ||
+!Array.isArray(payload.data.items)
+) {
+return {
+success: false,
+message: "ملف استيراد الإشعارات غير صالح."
+};
+}
+
+if (payload.data.items.length > MAX_NOTIFICATIONS) {
+  return {
+    success: false,
+    message: "تحتوي النسخة على عدد إشعارات يتجاوز الحد المسموح."
+  };
+}
+
+try {
+  const normalized = normalizeData(payload.data);
+
+  return {
+    success: true,
+    message: "تم التحقق من بيانات الاستيراد.",
+    data: normalized
+  };
+} catch (error) {
+  return {
+    success: false,
+    message: error.message
+  };
+}
+
 }
 
 function importData(payload, options) {
@@ -927,35 +1274,14 @@ if (config.confirmed !== true) {
   );
 }
 
-if (
-  !isPlainObject(payload) ||
-  payload.format !== "MY_LIFE_OS_NOTIFICATIONS" ||
-  !isPlainObject(payload.data) ||
-  !Array.isArray(payload.data.items)
-) {
-  throw new Error("ملف استيراد الإشعارات غير صالح.");
+const validated = validateImport(payload);
+
+if (!validated.success) {
+  throw new Error(validated.message);
 }
 
 const previous = data;
-
-const next = {
-  schemaVersion: 1,
-  createdAt: payload.data.createdAt || nowISO(),
-  updatedAt: nowISO(),
-  settings: Object.assign(
-    {},
-    createEmptyData().settings,
-    isPlainObject(payload.data.settings)
-      ? payload.data.settings
-      : {}
-  ),
-  items: payload.data.items
-    .filter(isPlainObject)
-    .map(function (item) {
-      return clone(item);
-    })
-    .slice(0, MAX_NOTIFICATIONS)
-};
+const next = validated.data;
 
 data = next;
 
@@ -971,6 +1297,7 @@ timers.forEach(function (timer) {
 });
 
 timers.clear();
+
 restoreScheduledTimers();
 
 emit("data-imported");
@@ -985,49 +1312,50 @@ return {
 
 /* =======================================================
 PUBLIC API
+Preserve the existing public method names.
 ======================================================= */
 
-const NotificationManager = {
+const NotificationManager = Object.freeze({
 version: VERSION,
+
+types: TYPES.slice(),
+priorities: PRIORITIES.slice(),
 
 add: addNotification,
 create: addNotification,
 
-getAll: getAll,
-getById: getById,
-search: search,
+getAll,
+getById,
+search,
 
-markRead: markRead,
-markUnread: markUnread,
-markAllRead: markAllRead,
+markRead,
+markUnread,
+markAllRead,
 
-dismiss: dismiss,
+dismiss,
 delete: deleteNotification,
-clearRead: clearRead,
-clearAll: clearAll,
+clearRead,
+clearAll,
 
-getUnreadCount: getUnreadCount,
-getStatistics: getStatistics,
+getUnreadCount,
+getStatistics,
 
-schedule: schedule,
-cancelTimer: cancelTimer,
-restoreScheduledTimers: restoreScheduledTimers,
+schedule,
+cancelTimer,
+restoreScheduledTimers,
 
-getSettings: getSettings,
-updateSettings: updateSettings,
-requestBrowserPermission: requestBrowserPermission,
+getSettings,
+updateSettings,
+requestBrowserPermission,
 
-exportData: exportData,
-importData: importData
+exportData,
+importData,
+validateImport
 
-};
+});
 
 global.NotificationManager = NotificationManager;
 
-/*
-إعادة تشغيل التذكيرات المحفوظة عند تحميل الصفحة.
-هذه الآلية لا تعمل بعد إغلاق الصفحة أو المتصفح.
-*/
 restoreScheduledTimers();
 
 emit("ready", {
