@@ -1,1314 +1,219 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#0b1220">
   <meta name="description" content="القمة — نظامك الشخصي لإدارة الحياة والأهداف والعادات والتطور حتى 2032.">
-
+  <meta name="author" content="MY LIFE OS">
+  <meta property="og:title" content="القمة | MY LIFE OS">
+  <meta property="og:description" content="خطوة اليوم تصنع قمة الغد. نظام لإدارة الأهداف والمهام والمذكرات والعادات حتى 2032.">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ar_AR">
   <title>القمة | MY LIFE OS</title>
-
+  <link rel="icon" href="data:image/svg+xml,[STRIPPED]">
+  <link rel="preload" href="./style.css" as="style">
   <link rel="stylesheet" href="./style.css">
-
-  <!-- تحميل ملفات النظام بالترتيب -->
+  <!-- عقد التكامل: الترتيب إلزامي. لا تغيّر الترتيب.
+       data.js -> storage.js -> core.js -> app.js
+       app.js هو الوحيد الذي يرسم الواجهة. باقي الملفات لا تلمس DOM مباشرة إلا عبر app.js -->
   <script src="./data.js" defer></script>
   <script src="./storage.js" defer></script>
   <script src="./core.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
-
 <body>
   <a class="skip-link" href="#main-content">انتقل إلى المحتوى</a>
 
   <div class="app-shell" id="app">
-
-    <!-- =========================
-         HEADER
-    ========================== -->
     <header class="app-header">
-      <a href="#home" class="brand" aria-label="القمة، الصفحة الرئيسية"
-         data-view="home">
+      <a href="#home" class="brand" aria-label="القمة، الصفحة الرئيسية" data-view="home">
         <span class="brand-mark" aria-hidden="true">ق</span>
-        <span class="brand-copy">
-          <strong>القِمّة</strong>
-          <small>MY LIFE OS</small>
-        </span>
+        <span class="brand-copy"><strong>القِمّة</strong><small>MY LIFE OS</small></span>
       </a>
-
       <div class="header-actions">
-        <button type="button" class="icon-button"
-                id="search-toggle"
-                aria-label="البحث"
-                title="البحث">
-          <span aria-hidden="true">⌕</span>
-        </button>
-
-        <button type="button" class="icon-button"
-                id="notifications-toggle"
-                aria-label="الإشعارات"
-                title="الإشعارات">
-          <span aria-hidden="true">♧</span>
-          <span class="notification-dot" id="notification-dot"
-                hidden></span>
-        </button>
-
-        <button type="button" class="icon-button"
-                id="settings-toggle"
-                aria-label="الإعدادات"
-                title="الإعدادات">
-          <span aria-hidden="true">⚙</span>
-        </button>
+        <button type="button" class="icon-button" id="search-toggle" aria-label="البحث" title="البحث" aria-expanded="false" aria-controls="search-panel"><span aria-hidden="true">⌕</span></button>
+        <button type="button" class="icon-button" id="notifications-toggle" aria-label="الإشعارات" title="الإشعارات" aria-expanded="false" aria-controls="notifications-panel"><span aria-hidden="true">♧</span><span class="notification-dot" id="notification-dot" hidden></span></button>
+        <button type="button" class="icon-button" id="settings-toggle" aria-label="الإعدادات" title="الإعدادات" aria-expanded="false" aria-controls="settings-panel"><span aria-hidden="true">⚙</span></button>
       </div>
     </header>
 
-    <!-- =========================
-         SEARCH PANEL
-    ========================== -->
+    <!-- شريط التقدم العالمي: يغذّيه app.js من البيانات الحقيقية -->
+    <div class="vision-strip" role="status" aria-live="polite">
+      <div class="vision-strip-top"><span id="vision-text">طريقك إلى 2032</span><span id="points-text">—</span></div>
+      <div class="progress-track"><div class="progress-fill" id="vision-progress" style="width:0%"></div></div>
+      <p class="muted-text" id="motivation-text">ابدأ بهدف واحد صغير اليوم.</p>
+    </div>
+
     <section class="utility-panel" id="search-panel" hidden>
       <form id="global-search-form" role="search">
         <label for="global-search-input">ابحث في حياتك ومذكراتك</label>
-
         <div class="input-with-action">
-          <input
-            id="global-search-input"
-            name="query"
-            type="search"
-            placeholder="هدف، فكرة، مهمة، مذكرة..."
-            autocomplete="off"
-          >
-
-          <button type="submit" class="button button-primary">
-            بحث
-          </button>
+          <input id="global-search-input" name="query" type="search" placeholder="هدف، فكرة، مهمة، مذكرة..." autocomplete="off">
+          <button type="submit" class="button button-primary">بحث</button>
         </div>
       </form>
-
-      <div id="search-results" class="search-results"
-           aria-live="polite"></div>
+      <div id="search-results" class="search-results" aria-live="polite"></div>
     </section>
 
-    <!-- =========================
-         NOTIFICATIONS PANEL
-    ========================== -->
     <section class="utility-panel" id="notifications-panel" hidden>
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">مركز التنبيهات</span>
-          <h2>إشعاراتك</h2>
-        </div>
-
-        <button type="button" class="text-button"
-                id="notifications-clear">
-          مسح التنبيهات
-        </button>
-      </div>
-
-      <div id="notifications-list" class="empty-state">
-        <span class="empty-icon" aria-hidden="true">◇</span>
-        <p>لا توجد إشعارات معروضة حاليًا.</p>
-      </div>
+      <div class="section-heading"><div><span class="eyebrow">مركز التنبيهات</span><h2>إشعاراتك</h2></div><button type="button" class="text-button" id="notifications-clear">مسح التنبيهات</button></div>
+      <div id="notifications-list" class="empty-state"><span class="empty-icon" aria-hidden="true">◇</span><p>لا توجد إشعارات معروضة حاليًا.</p></div>
     </section>
 
-    <!-- =========================
-         SETTINGS PANEL
-    ========================== -->
     <section class="utility-panel" id="settings-panel" hidden>
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">تخصيص النظام</span>
-          <h2>الإعدادات</h2>
-        </div>
-      </div>
-
+      <div class="section-heading"><div><span class="eyebrow">تخصيص النظام</span><h2>الإعدادات</h2></div></div>
       <div class="settings-grid">
-        <label class="field">
-          <span>لغة الواجهة</span>
-          <select id="language-setting" name="language">
-            <option value="ar">العربية</option>
-            <option value="fr">Français</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>المظهر</span>
-          <select id="theme-setting" name="theme">
-            <option value="dark">كحلي فاخر</option>
-            <option value="light">فاتح</option>
-          </select>
-        </label>
+        <label class="field"><span>لغة الواجهة</span><select id="language-setting" name="language"><option value="ar" selected>العربية</option><option value="fr">Français</option></select></label>
+        <label class="field"><span>المظهر</span><select id="theme-setting" name="theme"><option value="dark" selected>كحلي فاخر</option><option value="light">فاتح</option></select></label>
+        <label class="field"><span>اسمك</span><input id="user-name-setting" type="text" placeholder="اسمك كما تريد أن يظهر" maxlength="60"></label>
+        <label class="field"><span>رؤيتك لعام 2032</span><textarea id="vision-setting" rows="2" placeholder="كيف تريد أن تكون نسختك في عام 2032؟"></textarea></label>
       </div>
-
       <div class="settings-actions">
-        <button type="button" class="button button-secondary"
-                id="export-data">
-          تصدير بياناتي
-        </button>
-
-        <label class="button button-secondary file-button">
-          استيراد نسخة احتياطية
-          <input id="import-data" type="file"
-                 accept=".json,application/json">
-        </label>
+        <button type="button" class="button button-secondary" id="export-data">تصدير بياناتي</button>
+        <label class="button button-secondary file-button">استيراد نسخة احتياطية<input id="import-data" type="file" accept=".json,application/json"></label>
+        <button type="button" class="button button-danger" id="clear-data">مسح كل البيانات</button>
       </div>
-
-      <p class="muted-text">
-        احتفظ بنسخة احتياطية من بياناتك قبل تغيير المتصفح أو مسح بياناته.
-      </p>
+      <p class="muted-text">احتفظ بنسخة احتياطية من بياناتك قبل تغيير المتصفح أو مسح بياناته. بياناتك محفوظة في جهازك فقط.</p>
     </section>
 
-    <!-- =========================
-         MAIN NAVIGATION
-    ========================== -->
     <nav class="main-nav" aria-label="التنقل الرئيسي">
-      <button type="button" class="nav-item is-active"
-              data-view="home" aria-current="page">
-        <span aria-hidden="true">⌂</span>
-        <span>الرئيسية</span>
-      </button>
-
-      <button type="button" class="nav-item" data-view="goals">
-        <span aria-hidden="true">◎</span>
-        <span>الأهداف</span>
-      </button>
-
-      <button type="button" class="nav-item" data-view="tasks">
-        <span aria-hidden="true">☷</span>
-        <span>المهام</span>
-      </button>
-
-      <button type="button" class="nav-item" data-view="planning">
-        <span aria-hidden="true">◷</span>
-        <span>التخطيط</span>
-      </button>
-
-      <button type="button" class="nav-item" data-view="memos">
-        <span aria-hidden="true">▤</span>
-        <span>مذكراتي</span>
-      </button>
+      <button type="button" class="nav-item is-active" data-view="home" aria-current="page"><span aria-hidden="true">⌂</span><span>الرئيسية</span></button>
+      <button type="button" class="nav-item" data-view="goals"><span aria-hidden="true">◎</span><span>الأهداف</span></button>
+      <button type="button" class="nav-item" data-view="tasks"><span aria-hidden="true">☷</span><span>المهام</span></button>
+      <button type="button" class="nav-item" data-view="planning"><span aria-hidden="true">◷</span><span>التخطيط</span></button>
+      <button type="button" class="nav-item" data-view="memos"><span aria-hidden="true">▤</span><span>مذكراتي</span></button>
     </nav>
 
-    <!-- =========================
-         MAIN CONTENT
-    ========================== -->
     <main id="main-content">
-
       <!-- HOME -->
-      <section class="view is-active" id="view-home"
-               data-view-panel="home">
-
+      <section class="view is-active" id="view-home" data-view-panel="home">
         <section class="welcome-section">
-          <div class="welcome-copy">
-            <span class="eyebrow">مساحة بناء مستقبلك</span>
-            <h1>خطوة اليوم تصنع <span>قمة الغد.</span></h1>
-
-            <p>
-              لا تحتاج إلى تغيير حياتك كلها في يوم واحد.
-              تحتاج إلى الالتزام بخطوة صحيحة، ثم تكرارها.
-            </p>
-          </div>
-
-          <div class="welcome-emblem" aria-hidden="true">
-            <span class="emblem-ring"></span>
-            <span class="emblem-letter">ق</span>
-            <span class="emblem-caption">2032</span>
-          </div>
+          <div class="welcome-copy"><span class="eyebrow">مساحة بناء مستقبلك</span><h1>خطوة اليوم تصنع <span>قمة الغد.</span></h1><p>لا تحتاج إلى تغيير حياتك كلها في يوم واحد. تحتاج إلى الالتزام بخطوة صحيحة، ثم تكرارها.</p></div>
+          <div class="welcome-emblem" aria-hidden="true"><span class="emblem-ring"></span><span class="emblem-letter">ق</span><span class="emblem-caption">2032</span></div>
         </section>
-
         <section class="daily-focus panel">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">أهم ما في يومك</span>
-              <h2>الهدف اليومي</h2>
-            </div>
-
-            <span class="status-label" id="daily-goal-status">
-              يوم جديد
-            </span>
-          </div>
-
-          <form id="daily-goal-form">
-            <label for="daily-goal-input" class="visually-hidden">
-              اكتب هدفك اليومي
-            </label>
-
-            <textarea
-              id="daily-goal-input"
-              name="dailyGoal"
-              rows="2"
-              placeholder="ما أهم شيء تريد الالتزام به اليوم؟"
-            ></textarea>
-
-            <div class="form-footer">
-              <span class="muted-text">
-                التركيز على المهم، لا على كثرة المهام.
-              </span>
-
-              <button type="submit" class="button button-primary">
-                حفظ الهدف
-              </button>
-            </div>
-          </form>
+          <div class="section-heading"><div><span class="eyebrow">أهم ما في يومك</span><h2>الهدف اليومي</h2></div><span class="status-label" id="daily-goal-status">يوم جديد</span></div>
+          <form id="daily-goal-form"><label for="daily-goal-input" class="visually-hidden">اكتب هدفك اليومي</label><textarea id="daily-goal-input" name="dailyGoal" rows="2" placeholder="ما أهم شيء تريد الالتزام به اليوم؟"></textarea><div class="form-footer"><span class="muted-text">التركيز على المهم، لا على كثرة المهام.</span><button type="submit" class="button button-primary">حفظ الهدف</button></div></form>
         </section>
-
-        <!-- LIVE STATISTICS -->
         <section class="overview-section">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">صورتك الحالية</span>
-              <h2>نظرة على حياتك</h2>
-            </div>
-
-            <span class="muted-text">حسب سجلاتك</span>
-          </div>
-
+          <div class="section-heading"><div><span class="eyebrow">صورتك الحالية</span><h2>نظرة على حياتك</h2></div><span class="muted-text">حسب سجلاتك</span></div>
           <div class="stats-grid">
-            <article class="stat-card">
-              <span class="stat-icon" aria-hidden="true">◎</span>
-              <span class="stat-label">الأهداف النشطة</span>
-              <strong class="stat-value" id="stat-active-goals">—</strong>
-              <span class="stat-footnote">أهداف مسجلة</span>
-            </article>
-
-            <article class="stat-card">
-              <span class="stat-icon" aria-hidden="true">☷</span>
-              <span class="stat-label">المهام المفتوحة</span>
-              <strong class="stat-value" id="stat-open-tasks">—</strong>
-              <span class="stat-footnote">تحتاج إلى متابعة</span>
-            </article>
-
-            <article class="stat-card">
-              <span class="stat-icon" aria-hidden="true">◈</span>
-              <span class="stat-label">المذكرات</span>
-              <strong class="stat-value" id="stat-memos">—</strong>
-              <span class="stat-footnote">أفكار وسجلات محفوظة</span>
-            </article>
-
-            <article class="stat-card">
-              <span class="stat-icon" aria-hidden="true">↗</span>
-              <span class="stat-label">نسبة الإنجاز</span>
-              <strong class="stat-value" id="stat-completion">—</strong>
-              <span class="stat-footnote">وفق البيانات المتاحة</span>
-            </article>
+            <article class="stat-card"><span class="stat-icon" aria-hidden="true">◎</span><span class="stat-label">الأهداف النشطة</span><strong class="stat-value" id="stat-active-goals">0</strong><span class="stat-footnote" id="stat-active-goals-foot">أهداف مسجلة</span></article>
+            <article class="stat-card"><span class="stat-icon" aria-hidden="true">☷</span><span class="stat-label">المهام المفتوحة</span><strong class="stat-value" id="stat-open-tasks">0</strong><span class="stat-footnote" id="stat-open-tasks-foot">تحتاج إلى متابعة</span></article>
+            <article class="stat-card"><span class="stat-icon" aria-hidden="true">◈</span><span class="stat-label">المذكرات</span><strong class="stat-value" id="stat-memos">0</strong><span class="stat-footnote">أفكار وسجلات محفوظة</span></article>
+            <article class="stat-card"><span class="stat-icon" aria-hidden="true">↗</span><span class="stat-label">نسبة الإنجاز</span><strong class="stat-value" id="stat-completion">0%</strong><span class="stat-footnote">وفق البيانات المتاحة</span></article>
           </div>
         </section>
-
-        <!-- QUICK ACTIONS -->
         <section class="quick-actions-section">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">ابدأ الآن</span>
-              <h2>مسارات سريعة</h2>
-            </div>
-          </div>
-
+          <div class="section-heading"><div><span class="eyebrow">ابدأ الآن</span><h2>مسارات سريعة</h2></div></div>
           <div class="quick-actions-grid">
-            <button type="button" class="action-card"
-                    data-action="new-memo">
-              <span class="action-icon" aria-hidden="true">＋</span>
-              <strong>مذكرة جديدة</strong>
-              <small>سجّل فكرة أو تجربة</small>
-            </button>
-
-            <button type="button" class="action-card"
-                    data-action="new-goal">
-              <span class="action-icon" aria-hidden="true">◎</span>
-              <strong>هدف جديد</strong>
-              <small>حدد ما تريد تحقيقه</small>
-            </button>
-
-            <button type="button" class="action-card"
-                    data-action="new-task">
-              <span class="action-icon" aria-hidden="true">✓</span>
-              <strong>مهمة جديدة</strong>
-              <small>حوّل هدفك إلى عمل</small>
-            </button>
-
-            <button type="button" class="action-card"
-                    data-view="reviews">
-              <span class="action-icon" aria-hidden="true">↗</span>
-              <strong>مراجعة حياتي</strong>
-              <small>راجع التقدم والعقبات</small>
-            </button>
+            <button type="button" class="action-card" data-action="new-memo"><span class="action-icon" aria-hidden="true">＋</span><strong>مذكرة جديدة</strong><small>سجّل فكرة أو تجربة</small></button>
+            <button type="button" class="action-card" data-action="new-goal"><span class="action-icon" aria-hidden="true">◎</span><strong>هدف جديد</strong><small>حدد ما تريد تحقيقه</small></button>
+            <button type="button" class="action-card" data-action="new-task"><span class="action-icon" aria-hidden="true">✓</span><strong>مهمة جديدة</strong><small>حوّل هدفك إلى عمل</small></button>
+            <button type="button" class="action-card" data-view="reviews"><span class="action-icon" aria-hidden="true">↗</span><strong>مراجعة حياتي</strong><small>راجع التقدم والعقبات</small></button>
           </div>
         </section>
-
-        <!-- LONG TERM GOAL -->
-        <section class="long-term-card panel">
-          <div class="long-term-top">
-            <div>
-              <span class="eyebrow">الرؤية بعيدة المدى</span>
-              <h2>نسختك الأفضل بحلول 2032</h2>
-            </div>
-
-            <span class="year-mark">2032</span>
-          </div>
-
-          <p>
-            اجمع أهدافك ومهاراتك وتجاربك في مسار واضح،
-            وراجع تقدمك بناءً على ما أنجزته فعلًا.
-          </p>
-
-          <button type="button" class="button button-secondary"
-                  data-category="long-term">
-            مراجعة الهدف طويل المدى
-          </button>
-        </section>
-
-        <!-- MEMO CATEGORY SHORTCUTS -->
+        <section class="long-term-card panel"><div class="long-term-top"><div><span class="eyebrow">الرؤية بعيدة المدى</span><h2>نسختك الأفضل بحلول 2032</h2></div><span class="year-mark">2032</span></div><p>اجمع أهدافك ومهاراتك وتجاربك في مسار واضح، وراجع تقدمك بناءً على ما أنجزته فعلًا.</p><button type="button" class="button button-secondary" data-category="long-term">مراجعة الهدف طويل المدى</button></section>
         <section class="memo-shortcuts-section">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">كل جوانب حياتك</span>
-              <h2>مساحات حياتي</h2>
-              <p class="muted-text">
-                لكل مجال مذكرة تتطور معك، من الملاحظة إلى الهدف ثم التنفيذ.
-              </p>
-            </div>
-
-            <button type="button" class="text-button"
-                    data-view="memos">
-              عرض الكل ←
-            </button>
-          </div>
-
-          <div class="category-groups">
-
-            <section class="category-group">
-              <div class="category-group-heading">
-                <span class="group-number">01</span>
-                <div>
-                  <h3>التخطيط والأهداف</h3>
-                  <p>من النية إلى الإنجاز</p>
-                </div>
-              </div>
-
-              <div class="category-grid">
-                <button type="button" class="category-card"
-                        data-category="daily-goal">
-                  <span aria-hidden="true">◉</span>
-                  <strong>الهدف اليومي</strong>
-                  <small>أولويات اليوم</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="weekly-planning">
-                  <span aria-hidden="true">▦</span>
-                  <strong>الهدف الأسبوعي والجدول</strong>
-                  <small>وقتك وأولوياتك</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="long-term">
-                  <span aria-hidden="true">⌁</span>
-                  <strong>الهدف طويل المدى 2032</strong>
-                  <small>رؤيتك المستقبلية</small>
-                </button>
-              </div>
-            </section>
-
-            <section class="category-group">
-              <div class="category-group-heading">
-                <span class="group-number">02</span>
-                <div>
-                  <h3>الذات والحياة الشخصية</h3>
-                  <p>بناء نفسك من الداخل والخارج</p>
-                </div>
-              </div>
-
-              <div class="category-grid">
-                <button type="button" class="category-card"
-                        data-category="appearance">
-                  <span aria-hidden="true">◇</span>
-                  <strong>الملابس والمظهر الشخصي</strong>
-                  <small>الأناقة والعناية</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="religion">
-                  <span aria-hidden="true">☾</span>
-                  <strong>الدين</strong>
-                  <small>العبادة والاستقامة</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="mind">
-                  <span aria-hidden="true">✧</span>
-                  <strong>نظافة الروح وصفاء الذهن</strong>
-                  <small>الهدوء والوعي</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="health">
-                  <span aria-hidden="true">♡</span>
-                  <strong>الصحة والنوم</strong>
-                  <small>العافية والراحة</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="fitness">
-                  <span aria-hidden="true">↗</span>
-                  <strong>الرياضة واللياقة</strong>
-                  <small>القوة والاستمرارية</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="habits">
-                  <span aria-hidden="true">⟳</span>
-                  <strong>إدارة العادات والتغيير السلوكي</strong>
-                  <small>اترك ما يضرك وابنِ بديلًا</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="digital-life">
-                  <span aria-hidden="true">▣</span>
-                  <strong>الحياة الذكية وإدارة الإنترنت</strong>
-                  <small>استخدام واعٍ للتقنية</small>
-                </button>
-              </div>
-            </section>
-
-            <section class="category-group">
-              <div class="category-group-heading">
-                <span class="group-number">03</span>
-                <div>
-                  <h3>العلاقات</h3>
-                  <p>رعاية الروابط المهمة في حياتك</p>
-                </div>
-              </div>
-
-              <div class="category-grid">
-                <button type="button" class="category-card"
-                        data-category="family">
-                  <span aria-hidden="true">⌂</span>
-                  <strong>الوالدان والأسرة</strong>
-                  <small>البر والتواصل</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="romantic">
-                  <span aria-hidden="true">♡</span>
-                  <strong>العلاقة العاطفية</strong>
-                  <small>المشاعر والتوازن</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="social">
-                  <span aria-hidden="true">♧</span>
-                  <strong>المحيط الاجتماعي</strong>
-                  <small>الأصدقاء والتواصل</small>
-                </button>
-              </div>
-            </section>
-
-            <section class="category-group">
-              <div class="category-group-heading">
-                <span class="group-number">04</span>
-                <div>
-                  <h3>البناء المهني والاقتصادي</h3>
-                  <p>المعرفة والمهارات والاستقلال المالي</p>
-                </div>
-              </div>
-
-              <div class="category-grid">
-                <button type="button" class="category-card"
-                        data-category="learning">
-                  <span aria-hidden="true">▤</span>
-                  <strong>الدراسة والتعلم</strong>
-                  <small>المعرفة والشهادات</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="career">
-                  <span aria-hidden="true">↗</span>
-                  <strong>المسار المهني والمشاريع</strong>
-                  <small>الخبرة والمستقبل المهني</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="finance">
-                  <span aria-hidden="true">¤</span>
-                  <strong>الأموال والاقتصاد</strong>
-                  <small>الدخل والمصروف والادخار</small>
-                </button>
-              </div>
-            </section>
-
-            <section class="category-group">
-              <div class="category-group-heading">
-                <span class="group-number">05</span>
-                <div>
-                  <h3>التوثيق والتقييم</h3>
-                  <p>افهم مسارك وتعلم من تجربتك</p>
-                </div>
-              </div>
-
-              <div class="category-grid">
-                <button type="button" class="category-card"
-                        data-category="ideas">
-                  <span aria-hidden="true">✎</span>
-                  <strong>المذكرات العامة والأفكار</strong>
-                  <small>مساحة حرة للتدوين</small>
-                </button>
-
-                <button type="button" class="category-card"
-                        data-category="reviews">
-                  <span aria-hidden="true">◷</span>
-                  <strong>تقييم المسار ومراجعة الحياة</strong>
-                  <small>النتائج والعقبات والدروس</small>
-                </button>
-              </div>
-            </section>
-
+          <div class="section-heading"><div><span class="eyebrow">كل جوانب حياتك</span><h2>مساحات حياتي</h2><p class="muted-text">لكل مجال مذكرة تتطور معك، من الملاحظة إلى الهدف ثم التنفيذ.</p></div><button type="button" class="text-button" data-view="memos">عرض الكل ←</button></div>
+          <div class="category-groups" id="category-groups">
+            <section class="category-group"><div class="category-group-heading"><span class="group-number">01</span><div><h3>التخطيط والأهداف</h3><p>من النية إلى الإنجاز</p></div></div><div class="category-grid"><button type="button" class="category-card" data-category="daily-goal"><span aria-hidden="true">◉</span><strong>الهدف اليومي</strong><small>أولويات اليوم</small></button><button type="button" class="category-card" data-category="weekly-planning"><span aria-hidden="true">▦</span><strong>الهدف الأسبوعي والجدول</strong><small>وقتك وأولوياتك</small></button><button type="button" class="category-card" data-category="long-term"><span aria-hidden="true">⌁</span><strong>الهدف طويل المدى 2032</strong><small>رؤيتك المستقبلية</small></button></div></section>
+            <section class="category-group"><div class="category-group-heading"><span class="group-number">02</span><div><h3>الذات والحياة الشخصية</h3><p>بناء نفسك من الداخل والخارج</p></div></div><div class="category-grid"><button type="button" class="category-card" data-category="appearance"><span aria-hidden="true">◇</span><strong>الملابس والمظهر الشخصي</strong><small>الأناقة والعناية</small></button><button type="button" class="category-card" data-category="religion"><span aria-hidden="true">☾</span><strong>الدين</strong><small>العبادة والاستقامة</small></button><button type="button" class="category-card" data-category="mind"><span aria-hidden="true">✧</span><strong>نظافة الروح وصفاء الذهن</strong><small>الهدوء والوعي</small></button><button type="button" class="category-card" data-category="health"><span aria-hidden="true">♡</span><strong>الصحة والنوم</strong><small>العافية والراحة</small></button><button type="button" class="category-card" data-category="fitness"><span aria-hidden="true">↗</span><strong>الرياضة واللياقة</strong><small>القوة والاستمرارية</small></button><button type="button" class="category-card" data-category="habits"><span aria-hidden="true">⟳</span><strong>إدارة العادات والتغيير السلوكي</strong><small>اترك ما يضرك وابنِ بديلًا</small></button><button type="button" class="category-card" data-category="digital-life"><span aria-hidden="true">▣</span><strong>الحياة الذكية وإدارة الإنترنت</strong><small>استخدام واعٍ للتقنية</small></button></div></section>
+            <section class="category-group"><div class="category-group-heading"><span class="group-number">03</span><div><h3>العلاقات</h3><p>رعاية الروابط المهمة في حياتك</p></div></div><div class="category-grid"><button type="button" class="category-card" data-category="family"><span aria-hidden="true">⌂</span><strong>الوالدان والأسرة</strong><small>البر والتواصل</small></button><button type="button" class="category-card" data-category="romantic"><span aria-hidden="true">♡</span><strong>العلاقة العاطفية</strong><small>المشاعر والتوازن</small></button><button type="button" class="category-card" data-category="social"><span aria-hidden="true">♧</span><strong>المحيط الاجتماعي</strong><small>الأصدقاء والتواصل</small></button></div></section>
+            <section class="category-group"><div class="category-group-heading"><span class="group-number">04</span><div><h3>البناء المهني والاقتصادي</h3><p>المعرفة والمهارات والاستقلال المالي</p></div></div><div class="category-grid"><button type="button" class="category-card" data-category="learning"><span aria-hidden="true">▤</span><strong>الدراسة والتعلم</strong><small>المعرفة والشهادات</small></button><button type="button" class="category-card" data-category="career"><span aria-hidden="true">↗</span><strong>المسار المهني والمشاريع</strong><small>الخبرة والمستقبل المهني</small></button><button type="button" class="category-card" data-category="finance"><span aria-hidden="true">¤</span><strong>الأموال والاقتصاد</strong><small>الدخل والمصروف والادخار</small></button></div></section>
+            <section class="category-group"><div class="category-group-heading"><span class="group-number">05</span><div><h3>التوثيق والتقييم</h3><p>افهم مسارك وتعلم من تجربتك</p></div></div><div class="category-grid"><button type="button" class="category-card" data-category="ideas"><span aria-hidden="true">✎</span><strong>المذكرات العامة والأفكار</strong><small>مساحة حرة للتدوين</small></button><button type="button" class="category-card" data-category="reviews"><span aria-hidden="true">◷</span><strong>تقييم المسار ومراجعة الحياة</strong><small>النتائج والعقبات والدروس</small></button></div></section>
           </div>
         </section>
-
-        <!-- RECENT ACTIVITY -->
-        <section class="recent-section panel">
-          <div class="section-heading">
-            <div>
-              <span class="eyebrow">ذاكرة التقدم</span>
-              <h2>آخر نشاطاتك</h2>
-            </div>
-
-            <button type="button" class="text-button"
-                    data-view="reviews">
-              سجل النشاط
-            </button>
-          </div>
-
-          <div id="recent-activity" class="empty-state">
-            <span class="empty-icon" aria-hidden="true">◷</span>
-            <p>ستظهر هنا نشاطاتك بعد تسجيلها.</p>
-          </div>
-        </section>
-
+        <section class="recent-section panel"><div class="section-heading"><div><span class="eyebrow">ذاكرة التقدم</span><h2>آخر نشاطاتك</h2></div><button type="button" class="text-button" data-view="reviews">سجل النشاط</button></div><div id="recent-activity" class="empty-state"><span class="empty-icon" aria-hidden="true">◷</span><p>ستظهر هنا نشاطاتك بعد تسجيلها.</p></div></section>
       </section>
 
       <!-- GOALS -->
-      <section class="view" id="view-goals"
-               data-view-panel="goals" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">حدد وجهتك</span>
-          <h1>الأهداف</h1>
-          <p>حوّل ما تريد تحقيقه إلى أهداف واضحة قابلة للمتابعة.</p>
-        </div>
-
-        <section class="panel">
-          <form id="goal-form">
-            <div class="form-grid">
-              <label class="field">
-                <span>اسم الهدف</span>
-                <input id="goal-title" name="title" required
-                       maxlength="180"
-                       placeholder="ما الذي تريد تحقيقه؟">
-              </label>
-
-              <label class="field">
-                <span>المجال</span>
-                <select id="goal-category" name="category">
-                  <option value="daily-goal">الهدف اليومي</option>
-                  <option value="weekly-planning">التخطيط الأسبوعي</option>
-                  <option value="long-term">الهدف طويل المدى</option>
-                  <option value="learning">الدراسة والتعلم</option>
-                  <option value="career">المسار المهني</option>
-                  <option value="health">الصحة</option>
-                  <option value="fitness">الرياضة</option>
-                  <option value="finance">المالية</option>
-                  <option value="habits">العادات</option>
-                  <option value="other">مجال آخر</option>
-                </select>
-              </label>
-
-              <label class="field">
-                <span>الموعد المستهدف</span>
-                <input id="goal-deadline" name="deadline"
-                       type="date">
-              </label>
-
-              <label class="field">
-                <span>الأولوية</span>
-                <select id="goal-priority" name="priority">
-                  <option value="high">عالية</option>
-                  <option value="medium" selected>متوسطة</option>
-                  <option value="low">منخفضة</option>
-                </select>
-              </label>
-            </div>
-
-            <label class="field">
-              <span>لماذا هذا الهدف مهم؟</span>
-              <textarea id="goal-description" name="description"
-                        rows="3"
-                        placeholder="اكتب النتيجة التي تريد الوصول إليها..."></textarea>
-            </label>
-
-            <button type="submit" class="button button-primary">
-              إضافة الهدف
-            </button>
-          </form>
-        </section>
-
-        <section class="content-section">
-          <div class="section-heading">
-            <h2>أهدافي المسجلة</h2>
-            <span id="goals-count" class="count-label">0</span>
-          </div>
-
-          <div id="goals-list" class="record-list">
-            <div class="empty-state">
-              <p>ستظهر أهدافك هنا بعد إضافتها.</p>
-            </div>
-          </div>
-        </section>
+      <section class="view" id="view-goals" data-view-panel="goals" hidden>
+        <div class="page-heading"><span class="eyebrow">حدد وجهتك</span><h1>الأهداف</h1><p>حوّل ما تريد تحقيقه إلى أهداف واضحة قابلة للمتابعة.</p></div>
+        <section class="panel"><form id="goal-form"><div class="form-grid"><label class="field"><span>اسم الهدف</span><input id="goal-title" name="title" required maxlength="180" placeholder="ما الذي تريد تحقيقه؟"></label><label class="field"><span>المجال</span><select id="goal-category" name="category"><option value="daily-goal">الهدف اليومي</option><option value="weekly-planning">التخطيط الأسبوعي</option><option value="long-term">الهدف طويل المدى</option><option value="learning">الدراسة والتعلم</option><option value="career">المسار المهني</option><option value="health">الصحة</option><option value="fitness">الرياضة</option><option value="finance">المالية</option><option value="habits">العادات</option><option value="other">مجال آخر</option></select></label><label class="field"><span>الموعد المستهدف</span><input id="goal-deadline" name="deadline" type="date"></label><label class="field"><span>الأولوية</span><select id="goal-priority" name="priority"><option value="high">عالية</option><option value="medium" selected>متوسطة</option><option value="low">منخفضة</option></select></label></div><label class="field"><span>لماذا هذا الهدف مهم؟</span><textarea id="goal-description" name="description" rows="3" placeholder="اكتب النتيجة التي تريد الوصول إليها..."></textarea></label><button type="submit" class="button button-primary">إضافة الهدف</button></form></section>
+        <section class="content-section"><div class="section-heading"><h2>أهدافي المسجلة</h2><span id="goals-count" class="count-label">0</span></div><div id="goals-list" class="record-list"><div class="empty-state"><p>ستظهر أهدافك هنا بعد إضافتها.</p></div></div></section>
       </section>
 
       <!-- TASKS -->
-      <section class="view" id="view-tasks"
-               data-view-panel="tasks" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">العمل اليومي</span>
-          <h1>المهام</h1>
-          <p>قسّم أهدافك إلى خطوات صغيرة يمكنك تنفيذها.</p>
-        </div>
-
-        <section class="panel">
-          <form id="task-form">
-            <div class="form-grid">
-              <label class="field">
-                <span>اسم المهمة</span>
-                <input id="task-title" name="title" required
-                       maxlength="180"
-                       placeholder="ما الخطوة التالية؟">
-              </label>
-
-              <label class="field">
-                <span>مرتبطة بالهدف</span>
-                <select id="task-goal" name="goalId">
-                  <option value="">بدون هدف مرتبط</option>
-                </select>
-              </label>
-
-              <label class="field">
-                <span>تاريخ التنفيذ</span>
-                <input id="task-date" name="date" type="date">
-              </label>
-
-              <label class="field">
-                <span>الأولوية</span>
-                <select id="task-priority" name="priority">
-                  <option value="high">عالية</option>
-                  <option value="medium" selected>متوسطة</option>
-                  <option value="low">منخفضة</option>
-                </select>
-              </label>
-            </div>
-
-            <button type="submit" class="button button-primary">
-              إضافة المهمة
-            </button>
-          </form>
-        </section>
-
-        <section class="content-section">
-          <div class="section-heading">
-            <h2>قائمة المهام</h2>
-            <span id="tasks-count" class="count-label">0</span>
-          </div>
-
-          <div id="tasks-list" class="record-list">
-            <div class="empty-state">
-              <p>لا توجد مهام معروضة حتى الآن.</p>
-            </div>
-          </div>
-        </section>
+      <section class="view" id="view-tasks" data-view-panel="tasks" hidden>
+        <div class="page-heading"><span class="eyebrow">العمل اليومي</span><h1>المهام</h1><p>قسّم أهدافك إلى خطوات صغيرة يمكنك تنفيذها.</p></div>
+        <section class="panel"><form id="task-form"><div class="form-grid"><label class="field"><span>اسم المهمة</span><input id="task-title" name="title" required maxlength="180" placeholder="ما الخطوة التالية؟"></label><label class="field"><span>مرتبطة بالهدف</span><select id="task-goal" name="goalId"><option value="">بدون هدف مرتبط</option></select></label><label class="field"><span>تاريخ التنفيذ</span><input id="task-date" name="date" type="date"></label><label class="field"><span>الأولوية</span><select id="task-priority" name="priority"><option value="high">عالية</option><option value="medium" selected>متوسطة</option><option value="low">منخفضة</option></select></label></div><button type="submit" class="button button-primary">إضافة المهمة</button></form></section>
+        <section class="content-section"><div class="section-heading"><h2>قائمة المهام</h2><span id="tasks-count" class="count-label">0</span></div><div id="tasks-list" class="record-list"><div class="empty-state"><p>لا توجد مهام معروضة حتى الآن.</p></div></div></section>
       </section>
 
       <!-- PLANNING -->
-      <section class="view" id="view-planning"
-               data-view-panel="planning" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">نظّم وقتك</span>
-          <h1>التخطيط</h1>
-          <p>اربط أهدافك بأسبوعك ويومك وخطة تطويرك.</p>
-        </div>
-
+      <section class="view" id="view-planning" data-view-panel="planning" hidden>
+        <div class="page-heading"><span class="eyebrow">نظّم وقتك</span><h1>التخطيط</h1><p>اربط أهدافك بأسبوعك ويومك وخطة تطويرك.</p></div>
         <div class="planning-grid">
-          <button type="button" class="planning-card"
-                  data-view="weekly-planning">
-            <span class="planning-symbol" aria-hidden="true">▦</span>
-            <h2>الجدول الأسبوعي</h2>
-            <p>رتّب وقت الدراسة والعمل والراحة.</p>
-            <span class="text-link">فتح الجدول ←</span>
-          </button>
-
-          <button type="button" class="planning-card"
-                  data-view="plan90">
-            <span class="planning-symbol" aria-hidden="true">◷</span>
-            <h2>خطة 90 يومًا</h2>
-            <p>تابع التزامك وتغيير عاداتك خطوة بخطوة.</p>
-            <span class="text-link">فتح الخطة ←</span>
-          </button>
-
-          <button type="button" class="planning-card"
-                  data-view="habits">
-            <span class="planning-symbol" aria-hidden="true">⟳</span>
-            <h2>العادات والتغيير</h2>
-            <p>راقب ما تريد تركه وما تريد بناءه.</p>
-            <span class="text-link">إدارة العادات ←</span>
-          </button>
-
-          <button type="button" class="planning-card"
-                  data-view="reviews">
-            <span class="planning-symbol" aria-hidden="true">↗</span>
-            <h2>المراجعة الدورية</h2>
-            <p>اكتشف ما نجح وما يحتاج إلى تعديل.</p>
-            <span class="text-link">مراجعة التقدم ←</span>
-          </button>
+          <button type="button" class="planning-card" data-view="weekly-planning"><span class="planning-symbol" aria-hidden="true">▦</span><h2>الجدول الأسبوعي</h2><p>رتّب وقت الدراسة والعمل والراحة.</p><span class="text-link">فتح الجدول ←</span></button>
+          <button type="button" class="planning-card" data-view="plan90"><span class="planning-symbol" aria-hidden="true">◷</span><h2>خطة 90 يومًا</h2><p>تابع التزامك وتغيير عاداتك خطوة بخطوة.</p><span class="text-link">فتح الخطة ←</span></button>
+          <button type="button" class="planning-card" data-view="habits"><span class="planning-symbol" aria-hidden="true">⟳</span><h2>العادات والتغيير</h2><p>راقب ما تريد تركه وما تريد بناءه.</p><span class="text-link">إدارة العادات ←</span></button>
+          <button type="button" class="planning-card" data-view="reviews"><span class="planning-symbol" aria-hidden="true">↗</span><h2>المراجعة الدورية</h2><p>اكتشف ما نجح وما يحتاج إلى تعديل.</p><span class="text-link">مراجعة التقدم ←</span></button>
         </div>
       </section>
 
       <!-- MEMOS -->
-      <section class="view" id="view-memos"
-               data-view-panel="memos" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">ذاكرة حياتك</span>
-          <h1>المذكرات</h1>
-          <p>
-            سجّل أفكارك وتجاربك وأهدافك، ثم حوّل ما يستحق إلى خطوات عملية.
-          </p>
-        </div>
-
-        <section class="panel">
-          <form id="memo-form">
-            <label class="field">
-              <span>عنوان المذكرة</span>
-              <input id="memo-title" name="title" required
-                     maxlength="180"
-                     placeholder="عنوان مختصر يعبّر عن المذكرة">
-            </label>
-
-            <label class="field">
-              <span>مجال المذكرة</span>
-              <select id="memo-category" name="category" required>
-                <option value="ideas">المذكرات العامة والأفكار</option>
-                <option value="daily-goal">الهدف اليومي</option>
-                <option value="weekly-planning">الهدف الأسبوعي والجدول</option>
-                <option value="long-term">الهدف طويل المدى 2032</option>
-                <option value="appearance">الملابس والمظهر الشخصي</option>
-                <option value="religion">الدين</option>
-                <option value="mind">نظافة الروح وصفاء الذهن</option>
-                <option value="health">الصحة والنوم</option>
-                <option value="fitness">الرياضة واللياقة</option>
-                <option value="habits">إدارة العادات والتغيير السلوكي</option>
-                <option value="digital-life">الحياة الذكية وإدارة الإنترنت</option>
-                <option value="family">الوالدان والأسرة</option>
-                <option value="romantic">العلاقة العاطفية</option>
-                <option value="social">المحيط الاجتماعي</option>
-                <option value="learning">الدراسة والتعلم</option>
-                <option value="career">المسار المهني والمشاريع</option>
-                <option value="finance">الأموال والاقتصاد</option>
-                <option value="reviews">تقييم المسار ومراجعة الحياة</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>المذكرة والملاحظات</span>
-              <textarea id="memo-content" name="content"
-                        rows="7" required
-                        placeholder="اكتب بحرية ما تريد توثيقه..."></textarea>
-            </label>
-
-            <div class="form-footer">
-              <span class="muted-text">
-                راجع محتواك قبل تحويله إلى أهداف أو مهام.
-              </span>
-
-              <button type="submit" class="button button-primary">
-                حفظ المذكرة
-              </button>
-            </div>
-          </form>
-        </section>
-
-        <section class="content-section">
-          <div class="section-heading">
-            <h2>المذكرات المحفوظة</h2>
-            <span id="memos-count" class="count-label">0</span>
-          </div>
-
-          <div id="memos-list" class="record-list">
-            <div class="empty-state">
-              <p>ستظهر مذكراتك هنا بعد حفظها.</p>
-            </div>
-          </div>
-        </section>
+      <section class="view" id="view-memos" data-view-panel="memos" hidden>
+        <div class="page-heading"><span class="eyebrow">ذاكرة حياتك</span><h1>المذكرات</h1><p>سجّل أفكارك وتجاربك وأهدافك، ثم حوّل ما يستحق إلى خطوات عملية.</p></div>
+        <section class="panel"><form id="memo-form"><label class="field"><span>عنوان المذكرة</span><input id="memo-title" name="title" required maxlength="180" placeholder="عنوان مختصر يعبّر عن المذكرة"></label><label class="field"><span>مجال المذكرة</span><select id="memo-category" name="category" required><option value="ideas">المذكرات العامة والأفكار</option><option value="daily-goal">الهدف اليومي</option><option value="weekly-planning">الهدف الأسبوعي والجدول</option><option value="long-term">الهدف طويل المدى 2032</option><option value="appearance">الملابس والمظهر الشخصي</option><option value="religion">الدين</option><option value="mind">نظافة الروح وصفاء الذهن</option><option value="health">الصحة والنوم</option><option value="fitness">الرياضة واللياقة</option><option value="habits">إدارة العادات والتغيير السلوكي</option><option value="digital-life">الحياة الذكية وإدارة الإنترنت</option><option value="family">الوالدان والأسرة</option><option value="romantic">العلاقة العاطفية</option><option value="social">المحيط الاجتماعي</option><option value="learning">الدراسة والتعلم</option><option value="career">المسار المهني والمشاريع</option><option value="finance">الأموال والاقتصاد</option><option value="reviews">تقييم المسار ومراجعة الحياة</option></select></label><label class="field"><span>المذكرة والملاحظات</span><textarea id="memo-content" name="content" rows="7" required placeholder="اكتب بحرية ما تريد توثيقه..."></textarea></label><div class="form-footer"><span class="muted-text">راجع محتواك قبل تحويله إلى أهداف أو مهام.</span><button type="submit" class="button button-primary">حفظ المذكرة</button></div></form></section>
+        <section class="content-section"><div class="section-heading"><h2>المذكرات المحفوظة</h2><span id="memos-count" class="count-label">0</span></div><div class="filter-row"><label class="field"><span>تصفية حسب المجال</span><select id="memo-filter"><option value="all">كل المجالات</option></select></label></div><div id="memos-list" class="record-list"><div class="empty-state"><p>ستظهر مذكراتك هنا بعد حفظها.</p></div></div></section>
       </section>
 
-      <!-- CATEGORY DETAIL -->
-      <section class="view" id="view-category"
-               data-view-panel="category" hidden>
-        <div class="page-heading">
-          <button type="button" class="text-button"
-                  data-view="memos">
-            ← العودة إلى المذكرات
-          </button>
-
-          <span class="eyebrow">مساحة خاصة بك</span>
-          <h1 id="category-page-title">مذكرات المجال</h1>
-          <p id="category-page-description">
-            وثّق أفكارك وحدد أهدافك وتابع تقدمك.
-          </p>
-        </div>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h2>أضف ملاحظة إلى هذا المجال</h2>
-          </div>
-
-          <form id="category-memo-form">
-            <input id="category-current-key" type="hidden"
-                   name="category">
-
-            <label class="field">
-              <span>عنوان الملاحظة</span>
-              <input id="category-note-title" name="title"
-                     maxlength="180"
-                     placeholder="عنوان الملاحظة">
-            </label>
-
-            <label class="field">
-              <span>التفاصيل</span>
-              <textarea id="category-note-content" name="content"
-                        rows="5" required
-                        placeholder="اكتب الملاحظة أو الفكرة أو النتيجة..."></textarea>
-            </label>
-
-            <button type="submit" class="button button-primary">
-              حفظ الملاحظة
-            </button>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h2>سجل هذا المجال</h2>
-          </div>
-
-          <div id="category-records" class="record-list">
-            <div class="empty-state">
-              <p>لا توجد سجلات معروضة في هذا المجال حتى الآن.</p>
-            </div>
-          </div>
-        </section>
+      <!-- CATEGORY -->
+      <section class="view" id="view-category" data-view-panel="category" hidden>
+        <div class="page-heading"><button type="button" class="text-button" data-view="memos">← العودة إلى المذكرات</button><span class="eyebrow">مساحة خاصة بك</span><h1 id="category-page-title">مذكرات المجال</h1><p id="category-page-description">وثّق أفكارك وحدد أهدافك وتابع تقدمك.</p></div>
+        <section class="panel"><div class="section-heading"><h2>أضف ملاحظة إلى هذا المجال</h2></div><form id="category-memo-form"><input id="category-current-key" type="hidden" name="category"><label class="field"><span>عنوان الملاحظة</span><input id="category-note-title" name="title" maxlength="180" placeholder="عنوان الملاحظة"></label><label class="field"><span>التفاصيل</span><textarea id="category-note-content" name="content" rows="5" required placeholder="اكتب الملاحظة أو الفكرة أو النتيجة..."></textarea></label><button type="submit" class="button button-primary">حفظ الملاحظة</button></form></section>
+        <section class="panel"><div class="section-heading"><h2>سجل هذا المجال</h2></div><div id="category-records" class="record-list"><div class="empty-state"><p>لا توجد سجلات معروضة في هذا المجال حتى الآن.</p></div></div></section>
       </section>
 
-      <!-- WEEKLY PLANNING -->
-      <section class="view" id="view-weekly-planning"
-               data-view-panel="weekly-planning" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">تنظيم الوقت</span>
-          <h1>الهدف الأسبوعي والجدول</h1>
-          <p>خطّط لأسبوع واقعي، ثم راجع ما أنجزته.</p>
-        </div>
-
-        <section class="panel">
-          <form id="weekly-plan-form">
-            <label class="field">
-              <span>هدف الأسبوع</span>
-              <textarea id="weekly-goal" name="goal" rows="3"
-                        placeholder="ما أهم نتيجة تريد الوصول إليها هذا الأسبوع؟"></textarea>
-            </label>
-
-            <label class="field">
-              <span>خطة الأسبوع</span>
-              <textarea id="weekly-schedule" name="schedule" rows="6"
-                        placeholder="اكتب أيام الأسبوع والمهام أو الفترات الزمنية التي تريد تخصيصها..."></textarea>
-            </label>
-
-            <button type="submit" class="button button-primary">
-              حفظ الخطة الأسبوعية
-            </button>
-          </form>
-        </section>
-
-        <section class="panel">
-          <h2>مراجعة الأسبوع</h2>
-
-          <form id="weekly-review-form">
-            <label class="field">
-              <span>ما الذي أنجزته؟</span>
-              <textarea id="weekly-achievements" name="achievements"
-                        rows="3"></textarea>
-            </label>
-
-            <label class="field">
-              <span>ما العقبات التي واجهتك؟</span>
-              <textarea id="weekly-obstacles" name="obstacles"
-                        rows="3"></textarea>
-            </label>
-
-            <label class="field">
-              <span>ما الذي ستعدّله في الأسبوع القادم؟</span>
-              <textarea id="weekly-adjustments" name="adjustments"
-                        rows="3"></textarea>
-            </label>
-
-            <button type="submit" class="button button-secondary">
-              حفظ المراجعة
-            </button>
-          </form>
-        </section>
+      <!-- WEEKLY -->
+      <section class="view" id="view-weekly-planning" data-view-panel="weekly-planning" hidden>
+        <div class="page-heading"><span class="eyebrow">تنظيم الوقت</span><h1>الهدف الأسبوعي والجدول</h1><p>خطّط لأسبوع واقعي، ثم راجع ما أنجزته.</p></div>
+        <section class="panel"><form id="weekly-plan-form"><label class="field"><span>هدف الأسبوع</span><textarea id="weekly-goal" name="goal" rows="3" placeholder="ما أهم نتيجة تريد الوصول إليها هذا الأسبوع؟"></textarea></label><label class="field"><span>خطة الأسبوع</span><textarea id="weekly-schedule" name="schedule" rows="6" placeholder="اكتب أيام الأسبوع والمهام أو الفترات الزمنية التي تريد تخصيصها..."></textarea></label><button type="submit" class="button button-primary">حفظ الخطة الأسبوعية</button></form></section>
+        <section class="panel"><h2>مراجعة الأسبوع</h2><form id="weekly-review-form"><label class="field"><span>ما الذي أنجزته؟</span><textarea id="weekly-achievements" name="achievements" rows="3"></textarea></label><label class="field"><span>ما العقبات التي واجهتك؟</span><textarea id="weekly-obstacles" name="obstacles" rows="3"></textarea></label><label class="field"><span>ما الذي ستعدّله في الأسبوع القادم؟</span><textarea id="weekly-adjustments" name="adjustments" rows="3"></textarea></label><button type="submit" class="button button-secondary">حفظ المراجعة</button></form></section>
       </section>
 
-      <!-- 90-DAY PLAN -->
-      <section class="view" id="view-plan90"
-               data-view-panel="plan90" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">مشروع التغيير</span>
-          <h1>خطة 90 يومًا</h1>
-          <p>اجعل الالتزام عادة يومية بدلًا من الاعتماد على الحماس وحده.</p>
-        </div>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h2>إعداد الخطة</h2>
-          </div>
-
-          <form id="plan90-form">
-            <label class="field">
-              <span>تاريخ بداية الخطة</span>
-              <input id="plan90-start" name="startDate" type="date">
-            </label>
-
-            <label class="field">
-              <span>هدف التغيير</span>
-              <textarea id="plan90-goal" name="goal" rows="3"
-                        placeholder="ما السلوك أو النتيجة التي تريد تغييرها؟"></textarea>
-            </label>
-
-            <label class="field">
-              <span>العادات التي ستلتزم بها</span>
-              <textarea id="plan90-habits" name="habits" rows="4"
-                        placeholder="اكتب العادات التي تريد ممارستها باستمرار..."></textarea>
-            </label>
-
-            <button type="submit" class="button button-primary">
-              حفظ خطة 90 يومًا
-            </button>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h2>متابعة الالتزام</h2>
-          </div>
-
-          <form id="plan90-checkin-form">
-            <label class="field">
-              <span>تاريخ المتابعة</span>
-              <input id="plan90-checkin-date" name="date" type="date">
-            </label>
-
-            <label class="field">
-              <span>كيف كان التزامك اليوم؟</span>
-              <select id="plan90-checkin-status" name="status">
-                <option value="completed">التزمت بالخطة</option>
-                <option value="partial">التزام جزئي</option>
-                <option value="missed">لم ألتزم اليوم</option>
-              </select>
-            </label>
-
-            <label class="field">
-              <span>ملاحظات اليوم</span>
-              <textarea id="plan90-checkin-notes" name="notes"
-                        rows="3"></textarea>
-            </label>
-
-            <button type="submit" class="button button-secondary">
-              تسجيل المتابعة
-            </button>
-          </form>
-
-          <div id="plan90-progress" class="record-list">
-            <div class="empty-state">
-              <p>سيظهر سجل المتابعة بعد تسجيل أول يوم.</p>
-            </div>
-          </div>
-        </section>
+      <!-- PLAN90 -->
+      <section class="view" id="view-plan90" data-view-panel="plan90" hidden>
+        <div class="page-heading"><span class="eyebrow">مشروع التغيير</span><h1>خطة 90 يومًا</h1><p>اجعل الالتزام عادة يومية بدلًا من الاعتماد على الحماس وحده.</p></div>
+        <section class="panel"><div class="section-heading"><h2>إعداد الخطة</h2></div><form id="plan90-form"><label class="field"><span>تاريخ بداية الخطة</span><input id="plan90-start" name="startDate" type="date"></label><label class="field"><span>هدف التغيير</span><textarea id="plan90-goal" name="goal" rows="3" placeholder="ما السلوك أو النتيجة التي تريد تغييرها؟"></textarea></label><label class="field"><span>العادات التي ستلتزم بها</span><textarea id="plan90-habits" name="habits" rows="4" placeholder="اكتب العادات التي تريد ممارستها باستمرار..."></textarea></label><button type="submit" class="button button-primary">حفظ خطة 90 يومًا</button></form></section>
+        <section class="panel"><div class="section-heading"><h2>متابعة الالتزام</h2><span id="plan90-days-left" class="count-label"></span></div><form id="plan90-checkin-form"><label class="field"><span>تاريخ المتابعة</span><input id="plan90-checkin-date" name="date" type="date"></label><label class="field"><span>كيف كان التزامك اليوم؟</span><select id="plan90-checkin-status" name="status"><option value="completed">التزمت بالخطة</option><option value="partial">التزام جزئي</option><option value="missed">لم ألتزم اليوم</option></select></label><label class="field"><span>ملاحظات اليوم</span><textarea id="plan90-checkin-notes" name="notes" rows="3"></textarea></label><button type="submit" class="button button-secondary">تسجيل المتابعة</button></form><div id="plan90-progress" class="record-list"><div class="empty-state"><p>سيظهر سجل المتابعة بعد تسجيل أول يوم.</p></div></div></section>
       </section>
 
       <!-- HABITS -->
-      <section class="view" id="view-habits"
-               data-view-panel="habits" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">التغيير السلوكي</span>
-          <h1>إدارة العادات</h1>
-          <p>افهم المحفزات، وحدد البديل، ثم تابع تقدمك دون جلد للذات.</p>
-        </div>
-
-        <section class="panel">
-          <form id="habit-form">
-            <label class="field">
-              <span>اسم العادة أو السلوك</span>
-              <input id="habit-title" name="title" required
-                     maxlength="180"
-                     placeholder="ما السلوك الذي تريد تغييره؟">
-            </label>
-
-            <div class="form-grid">
-              <label class="field">
-                <span>نوع الخطة</span>
-                <select id="habit-type" name="type">
-                  <option value="reduce">التقليل</option>
-                  <option value="quit">الترك</option>
-                  <option value="replace">الاستبدال بعادة أفضل</option>
-                  <option value="build">بناء عادة جديدة</option>
-                </select>
-              </label>
-
-              <label class="field">
-                <span>الحالة</span>
-                <select id="habit-status" name="status">
-                  <option value="active">قيد العمل</option>
-                  <option value="paused">متوقفة مؤقتًا</option>
-                  <option value="completed">اكتملت الخطة</option>
-                </select>
-              </label>
-            </div>
-
-            <label class="field">
-              <span>المحفزات والمواقف</span>
-              <textarea id="habit-triggers" name="triggers"
-                        rows="3"
-                        placeholder="متى يظهر هذا السلوك؟ وما الذي يسبقه؟"></textarea>
-            </label>
-
-            <label class="field">
-              <span>البديل أو خطة التعامل</span>
-              <textarea id="habit-alternative" name="alternative"
-                        rows="3"
-                        placeholder="ماذا ستفعل بدلًا منه؟"></textarea>
-            </label>
-
-            <button type="submit" class="button button-primary">
-              حفظ خطة العادة
-            </button>
-          </form>
-        </section>
-
-        <section class="content-section">
-          <div class="section-heading">
-            <h2>خطط العادات</h2>
-          </div>
-
-          <div id="habits-list" class="record-list">
-            <div class="empty-state">
-              <p>ستظهر خططك هنا بعد تسجيلها.</p>
-            </div>
-          </div>
-        </section>
+      <section class="view" id="view-habits" data-view-panel="habits" hidden>
+        <div class="page-heading"><span class="eyebrow">التغيير السلوكي</span><h1>إدارة العادات</h1><p>افهم المحفزات، وحدد البديل، ثم تابع تقدمك دون جلد للذات.</p></div>
+        <section class="panel"><form id="habit-form"><label class="field"><span>اسم العادة أو السلوك</span><input id="habit-title" name="title" required maxlength="180" placeholder="ما السلوك الذي تريد تغييره؟"></label><div class="form-grid"><label class="field"><span>نوع الخطة</span><select id="habit-type" name="type"><option value="reduce">التقليل</option><option value="quit">الترك</option><option value="replace">الاستبدال بعادة أفضل</option><option value="build">بناء عادة جديدة</option></select></label><label class="field"><span>الحالة</span><select id="habit-status" name="status"><option value="active">قيد العمل</option><option value="paused">متوقفة مؤقتًا</option><option value="completed">اكتملت الخطة</option></select></label></div><label class="field"><span>المحفزات والمواقف</span><textarea id="habit-triggers" name="triggers" rows="3" placeholder="متى يظهر هذا السلوك؟ وما الذي يسبقه؟"></textarea></label><label class="field"><span>البديل أو خطة التعامل</span><textarea id="habit-alternative" name="alternative" rows="3" placeholder="ماذا ستفعل بدلًا منه؟"></textarea></label><button type="submit" class="button button-primary">حفظ خطة العادة</button></form></section>
+        <section class="content-section"><div class="section-heading"><h2>خطط العادات</h2><span id="habits-count" class="count-label">0</span></div><div id="habits-list" class="record-list"><div class="empty-state"><p>ستظهر خططك هنا بعد تسجيلها.</p></div></div></section>
       </section>
 
       <!-- REVIEWS -->
-      <section class="view" id="view-reviews"
-               data-view-panel="reviews" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">التعلم من التجربة</span>
-          <h1>تقييم المسار ومراجعة الحياة</h1>
-          <p>التقييم الجيد يساعدك على تعديل المسار، لا على إصدار الأحكام على نفسك.</p>
-        </div>
-
-        <section class="panel">
-          <div class="section-heading">
-            <h2>ملخص التقدم</h2>
-          </div>
-
-          <div class="review-stats">
-            <div class="review-stat">
-              <span>الأهداف</span>
-              <strong id="review-goals-value">—</strong>
-            </div>
-
-            <div class="review-stat">
-              <span>المهام</span>
-              <strong id="review-tasks-value">—</strong>
-            </div>
-
-            <div class="review-stat">
-              <span>المذكرات</span>
-              <strong id="review-memos-value">—</strong>
-            </div>
-          </div>
-
-          <p class="muted-text">
-            لا تعرض هذه الصفحة نتيجة تقييم نهائية قبل حسابها من السجلات
-            الفعلية للنظام.
-          </p>
-        </section>
-
-        <section class="panel">
-          <h2>مراجعة جديدة</h2>
-
-          <form id="life-review-form">
-            <label class="field">
-              <span>ما الذي سار بشكل جيد؟</span>
-              <textarea id="review-successes" name="successes"
-                        rows="3"></textarea>
-            </label>
-
-            <label class="field">
-              <span>ما الذي أعاق تقدمك؟</span>
-              <textarea id="review-obstacles" name="obstacles"
-                        rows="3"></textarea>
-            </label>
-
-            <label class="field">
-              <span>ما الدرس الذي تعلمته؟</span>
-              <textarea id="review-lessons" name="lessons"
-                        rows="3"></textarea>
-            </label>
-
-            <label class="field">
-              <span>ما الخطوة التالية؟</span>
-              <textarea id="review-next-step" name="nextStep"
-                        rows="3"></textarea>
-            </label>
-
-            <button type="submit" class="button button-primary">
-              حفظ المراجعة
-            </button>
-          </form>
-        </section>
-
-        <section class="panel">
-          <h2>سجل المراجعات</h2>
-          <div id="reviews-list" class="record-list">
-            <div class="empty-state">
-              <p>ستظهر مراجعاتك السابقة هنا.</p>
-            </div>
-          </div>
-        </section>
+      <section class="view" id="view-reviews" data-view-panel="reviews" hidden>
+        <div class="page-heading"><span class="eyebrow">التعلم من التجربة</span><h1>تقييم المسار ومراجعة الحياة</h1><p>التقييم الجيد يساعدك على تعديل المسار، لا على إصدار الأحكام على نفسك.</p></div>
+        <section class="panel"><div class="section-heading"><h2>ملخص التقدم</h2></div><div class="review-stats"><div class="review-stat"><span>الأهداف</span><strong id="review-goals-value">0</strong></div><div class="review-stat"><span>المهام</span><strong id="review-tasks-value">0</strong></div><div class="review-stat"><span>المذكرات</span><strong id="review-memos-value">0</strong></div></div><p class="muted-text">تُحسب هذه الأرقام من سجلاتك الفعلية، وليست تقديرات جاهزة.</p></section>
+        <section class="panel"><h2>مراجعة جديدة</h2><form id="life-review-form"><label class="field"><span>ما الذي سار بشكل جيد؟</span><textarea id="review-successes" name="successes" rows="3"></textarea></label><label class="field"><span>ما الذي أعاق تقدمك؟</span><textarea id="review-obstacles" name="obstacles" rows="3"></textarea></label><label class="field"><span>ما الدرس الذي تعلمته؟</span><textarea id="review-lessons" name="lessons" rows="3"></textarea></label><label class="field"><span>ما الخطوة التالية؟</span><textarea id="review-next-step" name="nextStep" rows="3"></textarea></label><button type="submit" class="button button-primary">حفظ المراجعة</button></form></section>
+        <section class="panel"><h2>سجل المراجعات</h2><div id="reviews-list" class="record-list"><div class="empty-state"><p>ستظهر مراجعاتك السابقة هنا.</p></div></div></section>
       </section>
 
-      <!-- SEARCH RESULTS -->
-      <section class="view" id="view-search"
-               data-view-panel="search" hidden>
-        <div class="page-heading">
-          <span class="eyebrow">البحث في سجلاتك</span>
-          <h1>نتائج البحث</h1>
-        </div>
-
-        <div id="search-page-results" class="record-list">
-          <div class="empty-state">
-            <p>اكتب عبارة في البحث للعثور على سجلاتك.</p>
-          </div>
-        </div>
+      <!-- SEARCH -->
+      <section class="view" id="view-search" data-view-panel="search" hidden>
+        <div class="page-heading"><span class="eyebrow">البحث في سجلاتك</span><h1>نتائج البحث</h1></div>
+        <div id="search-page-results" class="record-list"><div class="empty-state"><p>اكتب عبارة في البحث للعثور على سجلاتك.</p></div></div>
       </section>
-
     </main>
 
-    <!-- =========================
-         GLOBAL MEMO ORGANIZER
-    ========================== -->
     <section class="organizer-section panel" id="memo-organizer">
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">من الفكرة إلى التنفيذ</span>
-          <h2>مساحة تنظيم الأفكار</h2>
-        </div>
-      </div>
-
-      <p class="muted-text">
-        الصق ملاحظاتك هنا، ثم راجع النص المنظم قبل اعتماده أو تحويله
-        إلى أهداف ومهام.
-      </p>
-
-      <form id="organizer-form">
-        <label class="field">
-          <span>النص أو الملاحظات</span>
-          <textarea id="organizer-input" name="content"
-                    rows="7"
-                    placeholder="الصق ملاحظاتك أو اكتب أفكارك هنا..."></textarea>
-        </label>
-
-        <div class="form-footer">
-          <span class="muted-text">
-            التنظيم الآلي يحتاج إلى منطق يُنفّذ في ملفات النظام.
-          </span>
-
-          <button type="submit" class="button button-primary">
-            تنظيم للمراجعة
-          </button>
-        </div>
-      </form>
-
-      <section id="organizer-output-section" hidden>
-        <div class="section-heading">
-          <h3>النتيجة المقترحة</h3>
-        </div>
-
-        <div id="organizer-output" class="organizer-output"
-             aria-live="polite"></div>
-
-        <div class="form-footer">
-          <button type="button" class="button button-secondary"
-                  id="organizer-cancel">
-            إلغاء
-          </button>
-
-          <button type="button" class="button button-primary"
-                  id="organizer-approve">
-            اعتماد بعد المراجعة
-          </button>
-        </div>
-      </section>
+      <div class="section-heading"><div><span class="eyebrow">من الفكرة إلى التنفيذ</span><h2>مساحة تنظيم الأفكار</h2></div></div>
+      <p class="muted-text">الصق ملاحظاتك هنا، ثم راجع النص المنظم قبل اعتماده أو تحويله إلى أهداف ومهام.</p>
+      <form id="organizer-form"><label class="field"><span>النص أو الملاحظات</span><textarea id="organizer-input" name="content" rows="7" placeholder="الصق ملاحظاتك أو اكتب أفكارك هنا..."></textarea></label><div class="form-footer"><span class="muted-text" id="organizer-hint">سيتم تقسيم النص إلى فقرات قابلة للمراجعة.</span><button type="submit" class="button button-primary">تنظيم للمراجعة</button></div></form>
+      <section id="organizer-output-section" hidden><div class="section-heading"><h3>النتيجة المقترحة</h3><span id="organizer-count" class="count-label"></span></div><div id="organizer-output" class="organizer-output" aria-live="polite"></div><div class="form-footer"><button type="button" class="button button-secondary" id="organizer-cancel">إلغاء</button><button type="button" class="button button-primary" id="organizer-approve">اعتماد بعد المراجعة</button></div></section>
     </section>
 
-    <!-- =========================
-         GLOBAL MODAL
-    ========================== -->
-    <dialog id="app-modal" class="app-modal">
-      <div class="modal-header">
-        <h2 id="modal-title">التفاصيل</h2>
-
-        <button type="button" class="icon-button"
-                id="modal-close" aria-label="إغلاق">
-          ×
-        </button>
-      </div>
-
-      <div id="modal-content" class="modal-content"></div>
-    </dialog>
-
-    <!-- =========================
-         TOAST MESSAGES
-    ========================== -->
-    <div id="toast-region"
-         class="toast-region"
-         role="status"
-         aria-live="polite"
-         aria-atomic="true"></div>
-
-    <!-- =========================
-         FOOTER
-    ========================== -->
-    <footer class="app-footer">
-      <div class="footer-brand">
-        <span class="brand-mark" aria-hidden="true">ق</span>
-        <span>القِمّة</span>
-      </div>
-
-      <p>ابنِ نفسك كل يوم، ولو بخطوة صغيرة.</p>
-      <small>MY LIFE OS · 2026–2032</small>
-    </footer>
-
+    <dialog id="app-modal" class="app-modal"><div class="modal-header"><h2 id="modal-title">التفاصيل</h2><button type="button" class="icon-button" id="modal-close" aria-label="إغلاق">×</button></div><div id="modal-content" class="modal-content"></div></dialog>
+    <div id="toast-region" class="toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
+    <footer class="app-footer"><div class="footer-brand"><span class="brand-mark" aria-hidden="true">ق</span><span>القِمّة</span></div><p>ابنِ نفسك كل يوم، ولو بخطوة صغيرة.</p><small>MY LIFE OS · 2026–2032</small></footer>
   </div>
-
-  <noscript>
-    <div class="noscript-message">
-      تحتاج إلى تفعيل JavaScript حتى يعمل نظام القمة التفاعلي.
-    </div>
-  </noscript>
+  <noscript><div class="noscript-message">تحتاج إلى تفعيل JavaScript حتى يعمل نظام القمة التفاعلي.</div></noscript>
 </body>
-</html>
+      </html>
